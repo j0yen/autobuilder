@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autobuilder.failure_capsule.v1",
+  "title": "Autobuilder FailureCapsule",
+  "description": "Structured crash record emitted by Stage 3 when an iteration fails to produce metrics.json or any hard gate errors out. Translated from jeryu/src/capsule.rs:14 (GitLab-CI-specific fields generalized).",
+  "type": "object",
+  "required": [
+    "schema",
+    "iteration",
+    "intent_slug",
+    "stage",
+    "exit_code",
+    "commit_sha",
+    "branch",
+    "working_directory",
+    "log_snippet",
+    "repro_script",
+    "failure_kind",
+    "summary",
+    "created_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "autobuilder.failure_capsule.v1" },
+    "iteration": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Stage-3 iteration counter (0 = baseline)."
+    },
+    "intent_slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+    "stage": {
+      "type": "string",
+      "description": "Which gate raised: cargo-check, cargo-clippy, cargo-test, cargo-deny, miri, audit, proof-lanes, metric-harness."
+    },
+    "exit_code": { "type": "integer" },
+    "commit_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "branch": { "type": "string" },
+    "working_directory": { "type": "string" },
+    "log_snippet": {
+      "type": "string",
+      "description": "Last ~50 lines of stderr/stdout. Secrets-redacted (no TOKEN, KEY, SECRET, PASSWORD substrings)."
+    },
+    "repro_script": {
+      "type": "string",
+      "description": "Self-contained shell snippet that re-runs the failing stage from a clean checkout of commit_sha."
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Non-sensitive environment variables. Keys containing TOKEN/KEY/SECRET/PASSWORD are excluded."
+    },
+    "failure_kind": {
+      "type": "string",
+      "enum": [
+        "build_error",
+        "test_failure",
+        "clippy_warning",
+        "deny_violation",
+        "miri_unsoundness",
+        "audit_finding",
+        "lane_routing_failure",
+        "metric_emission_failure",
+        "timeout",
+        "oom",
+        "panic",
+        "unknown"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Short human-readable summary, e.g. 'clippy_warning failure in stage cargo-clippy on branch autobuilder/rev-cli'."
+    },
+    "superseded_by_sha": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{7,40}$",
+      "description": "If a later iteration fixed this failure mode, the commit SHA that resolved it."
+    },
+    "retry_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "How many fix attempts have been made on this failure (≤3 before the loop gives up)."
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  }
+}

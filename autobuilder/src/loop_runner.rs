@@ -214,6 +214,11 @@ fn extract_scalar(scalars: &serde_json::Value, name: &str) -> Option<f64> {
     })
 }
 
+/// Most recent non-crash metric from results.tsv. Crashed iterations are
+/// excluded because their metric reflects an aborted state — using it as
+/// `previous` makes a clean re-run of the same SHA look like a no-op
+/// advance/revert decision (`previous == current`) when the producer is
+/// actually back in business.
 fn read_previous_metric(results_tsv: &Path) -> Result<Option<f64>> {
     if !results_tsv.is_file() {
         return Ok(None);
@@ -222,6 +227,7 @@ fn read_previous_metric(results_tsv: &Path) -> Result<Option<f64>> {
     let last_data_line = content
         .lines()
         .filter(|l| !l.is_empty() && !l.starts_with("commit\t"))
+        .filter(|l| !is_crash_row(l))
         .next_back();
     let Some(line) = last_data_line else {
         return Ok(None);
@@ -235,6 +241,11 @@ fn read_previous_metric(results_tsv: &Path) -> Result<Option<f64>> {
         .parse()
         .with_context(|| format!("results.tsv metric column not numeric: {metric_str}"))?;
     Ok(Some(metric))
+}
+
+fn is_crash_row(line: &str) -> bool {
+    // Schema: commit \t metric \t iteration \t ac_pass \t ac_total \t status \t description
+    line.split('\t').nth(5) == Some("crash")
 }
 
 struct VerdictInputs {

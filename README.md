@@ -54,9 +54,11 @@ PRD ──► Stage 1: Intake & 5-Whys ──► intent-card.json
 ```
 
 The **agent edits only `src/`**. Everything else — `Cargo.toml`, `clippy.toml`,
-`deny.toml`, `tests/`, `scripts/run-metrics.sh`, `scripts/audit.sh`,
-`scripts/risk-gate.sh` — is read-only harness, mirroring autoresearch's
-`prepare.py`/`train.py` separation.
+`deny.toml`, `tests/`, `scripts/run-metrics.sh` — is read-only harness,
+mirroring autoresearch's `prepare.py`/`train.py` separation. The skill ships
+the BAD_RUST audit and risk-gate driver scripts in
+`~/.claude/skills/autobuilder/{rules/audit-checks.sh,scripts/risk-gate.sh}`
+rather than per-project, so they stay versioned in one place.
 
 ### The 7 receipts
 
@@ -112,17 +114,19 @@ autobuilder postmortem      # Stage 5: aggregate run artifacts
 autobuilder evolve          # Stage 5: gated skill-self-diff
 ```
 
-Some subcommands are still stubs that return a typed error explaining what
-they should do; the skill's shell scripts fall back to minimum-viable
-behavior in the meantime.
+All subcommands are real. The bin has been bootstrapped through its own
+gate (verdict=pass) and dogfooded against an external PRD
+(`mcp-tuner`, 9 ACs green).
 
 ### Dogfooding
 
 `scripts/run-metrics.sh` is the harness for this repo. Its unfakeable scalar
 is `stage4_receipt_producers_callable` — how many of the Stage 4 receipt
-producers respond to `--help` on the freshly-built binary. Every acceptance
-criterion maps 1:1 to a producer, plus a build/test sanity AC and a
-digest-roundtrip AC.
+producers respond on the freshly-built binary. Every acceptance criterion
+maps 1:1 to a producer and exercises the producer's actual contract against
+a tmp git fixture (writes rollback.md, routes a src/ change with confidence
+1.0, blocks ci-checks when no GH run exists for HEAD, etc.) — not just
+`--help`. Plus a build/test sanity AC and a digest-roundtrip AC.
 
 ```sh
 ./scripts/run-metrics.sh

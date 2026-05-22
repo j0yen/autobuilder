@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autobuilder.intent_card.v1",
+  "title": "Autobuilder IntentCard",
+  "description": "Structured intent derived from a PRD via 4/5-Whys interview. Source of truth for Stage 2 scaffold and Stage 3 advance/revert decisions.",
+  "type": "object",
+  "required": [
+    "schema",
+    "prd_source",
+    "root_motivation",
+    "user_persona",
+    "unfakeable_metric",
+    "acceptance_criteria",
+    "scope",
+    "non_goals",
+    "hard_constraints",
+    "five_whys_trace",
+    "created_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "autobuilder.intent_card.v1" },
+    "prd_source": {
+      "type": "string",
+      "description": "Path to the PRD file, or 'inline' if pasted in conversation."
+    },
+    "root_motivation": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000,
+      "description": "The root motivation surfaced by 5-Whys. Not the surface request."
+    },
+    "user_persona": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "Who runs this software in what context."
+    },
+    "unfakeable_metric": {
+      "type": "object",
+      "required": ["name", "lower_is_better", "harness_command"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Single load-bearing scalar (autoresearch model). Examples: tests_pass_count, latency_p99_ms, binary_size_bytes."
+        },
+        "lower_is_better": { "type": "boolean" },
+        "harness_command": {
+          "type": "string",
+          "description": "Command that emits this metric. Stays read-only across the iterate loop."
+        },
+        "target": {
+          "type": ["number", "null"],
+          "description": "Optional numeric target. Null means 'always optimize'."
+        }
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "level", "test", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^AC[0-9]+$" },
+          "level": { "enum": ["MUST", "SHOULD", "MAY"] },
+          "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "test": {
+            "type": "string",
+            "description": "How this is verified. Either a test-name reference (tests/acceptance_<id>.rs) or a measurable predicate against the unfakeable_metric."
+          }
+        }
+      }
+    },
+    "scope": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What this project DOES."
+    },
+    "non_goals": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What this project explicitly does NOT do. Surfaced during 5-Whys to prevent scope creep."
+    },
+    "hard_constraints": {
+      "type": "object",
+      "required": ["rust_edition", "target_kind", "deny_unsafe"],
+      "additionalProperties": false,
+      "properties": {
+        "rust_edition": { "enum": ["2021", "2024"] },
+        "target_kind": { "enum": ["cli", "lib"] },
+        "deny_unsafe": { "type": "boolean" },
+        "max_deps": { "type": ["integer", "null"], "minimum": 0 },
+        "msrv": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$",
+          "description": "Minimum supported Rust version."
+        },
+        "additional": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] },
+          "description": "Free-form additional hard constraints surfaced during intake."
+        }
+      }
+    },
+    "five_whys_trace": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["why", "q", "a"],
+        "additionalProperties": false,
+        "properties": {
+          "why": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "q": { "type": "string", "minLength": 1 },
+          "a": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "ambiguities_resolved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question", "resolution"],
+        "additionalProperties": false,
+        "properties": {
+          "question": { "type": "string" },
+          "resolution": { "type": "string" }
+        }
+      },
+      "description": "Ambiguities the intake flagged and how the user resolved them."
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "intent_slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+      "description": "Slug used for the autobuilder/<slug> branch name."
+    }
+  }
+}
