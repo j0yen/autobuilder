@@ -1,0 +1,98 @@
+# proof-lanes.toml — change-class → required-lane routing for the
+# autobuilder repo. Globs are relative to the git repo root (which is
+# what `git diff --name-only` emits), so the `autobuilder/` workspace
+# prefix is included.
+
+[[lane]]
+id = "autobuilder-rust"
+description = "Behavior changes in the autobuilder binary"
+globs = ["autobuilder/src/**/*.rs"]
+required_commands = [
+  "cd autobuilder && cargo check --workspace",
+  "cd autobuilder && cargo clippy --bin autobuilder -- -D warnings",
+  "cd autobuilder && cargo test --workspace",
+]
+
+[[lane]]
+id = "metric-harness-rust"
+description = "Behavior changes in the dogfooded metric-harness crate"
+globs = ["autobuilder/crates/metric-harness/src/**/*.rs"]
+required_commands = [
+  "cd autobuilder && cargo check --workspace",
+  "cd autobuilder && cargo test -p autobuilder-metric-harness",
+]
+
+[[lane]]
+id = "rust-deps"
+description = "Cargo.toml / Cargo.lock changes for the autobuilder workspace"
+globs = [
+  "autobuilder/Cargo.toml",
+  "autobuilder/Cargo.lock",
+  "autobuilder/crates/*/Cargo.toml",
+]
+required_commands = [
+  "cd autobuilder && cargo check --workspace",
+  "cd autobuilder && cargo deny check",
+]
+
+[[lane]]
+id = "ci"
+description = "GitHub Actions workflow changes"
+globs = [".github/workflows/**"]
+required_commands = [
+  "gh run list -R j0yen/autobuilder --commit HEAD --json conclusion",
+]
+
+[[lane]]
+id = "agent"
+description = "Intent-card / proof-lanes / owner-map / test-map changes"
+globs = ["agent/**"]
+required_commands = [
+  "autobuilder vti-plan --project . --base origin/main",
+]
+
+[[lane]]
+id = "harness"
+description = "scripts/ — the per-project shell harness"
+globs = ["scripts/**"]
+required_commands = [
+  "bash scripts/run-metrics.sh",
+]
+
+[[lane]]
+id = "docs"
+description = "Markdown docs and PRDs"
+globs = ["*.md", "PLAN.md", "PRD-*.md"]
+required_commands = []
+
+[[lane]]
+id = "config"
+description = "Top-level repo + workspace config (lints, deny, toolchain pins)"
+globs = [
+  ".gitignore",
+  "autobuilder/.gitignore",
+  "autobuilder/clippy.toml",
+  "autobuilder/deny.toml",
+  "autobuilder/rust-toolchain.toml",
+  "autobuilder/crates/*/clippy.toml",
+  "autobuilder/crates/*/deny.toml",
+  "autobuilder/crates/*/rust-toolchain.toml",
+  "autobuilder/crates/*/.gitignore",
+  "autobuilder/crates/*/Cargo.lock",
+]
+required_commands = [
+  "cd autobuilder && cargo check --workspace",
+]
+
+[[lane]]
+id = "metric-harness-scaffold"
+description = "Scaffolded support files of the metric-harness crate (tests, agent, scripts, ci)"
+globs = [
+  "autobuilder/crates/metric-harness/tests/**",
+  "autobuilder/crates/metric-harness/agent/**",
+  "autobuilder/crates/metric-harness/scripts/**",
+  "autobuilder/crates/metric-harness/.github/**",
+]
+required_commands = [
+  "cd autobuilder && cargo test -p autobuilder-metric-harness",
+]

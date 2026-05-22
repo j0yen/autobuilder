@@ -1,0 +1,12 @@
+{
+  "schema": "autobuilder.owner_map.v1",
+  "default_owner": "j0yen",
+  "globs": {
+    "autobuilder/src/**": "j0yen",
+    "autobuilder/crates/**": "j0yen",
+    "agent/**": "j0yen",
+    "scripts/**": "j0yen",
+    ".github/**": "j0yen",
+    "*.md": "j0yen"
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "PLAN.md",
+  "intent_slug": "autobuilder",
+  "root_motivation": "Bootstrap autobuilder under its own discipline. The companion Rust binary owns the load-bearing parts of the Stage 1–5 pipeline (intake, scaffold, loop, gate, postmortem, evolve). The first artifact whose existence the gate can verify on itself is the 7-receipt risk-gate machinery — proving the binary can produce and walk all seven receipts on its own repo is the v1 acceptance test for the gate model itself.",
+  "user_persona": "The autobuilder skill orchestrator (a Claude session) and the human invoking `/autobuilder` from their own project. Both shell out to this binary for the receipt + gate steps that must not live in bash.",
+  "unfakeable_metric": {
+    "name": "stage4_receipt_producers_callable",
+    "lower_is_better": false,
+    "harness_command": "scripts/run-metrics.sh",
+    "target": 5
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "`autobuilder rollback-plan --project <dir> --base <ref>` dry-runs git revert via merge-tree, writes target/autobuilder/rollback.md, and emits a digest-bound receipts/rollback-plan.json with verdict pass|block.",
+      "test": "scripts/run-metrics.sh — smoke against the autobuilder repo itself"
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "`autobuilder vti-plan --project <dir> --base <ref>` reads agent/proof-lanes.toml, routes every changed file from <base>..HEAD to ≥1 lane (confidence ≥ 0.70), and emits a digest-bound receipts/vti-plan.json.",
+      "test": "scripts/run-metrics.sh — smoke against the autobuilder repo itself"
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "description": "`autobuilder reviewer-agent prepare` assembles a review-request packet (HEAD, base, intent_card_sha256, commits, changed_files); `autobuilder reviewer-agent finalize --input <decision.json>` validates the subagent's JSON against the schema in prompts/reviewer-agent.md and emits a digest-bound receipts/reviewer-agent.json.",
+      "test": "scripts/run-metrics.sh — smoke against the autobuilder repo itself"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "`autobuilder ci-checks --project <dir>` shells out to `gh run list --commit <head>` and refuses to emit verdict=pass without at least one workflow run with conclusion=success on HEAD.",
+      "test": "scripts/run-metrics.sh — smoke against the autobuilder repo itself"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "`autobuilder gate --project <dir>` walks target/autobuilder/receipts/{intake,vti-plan,proof-receipt,risk-gate,reviewer-agent,rollback-plan,ci-checks}.json, verifies schema + head_sha + verdict on each, and emits target/autobuilder/release-receipt.json with the aggregated verdict.",
+      "test": "scripts/run-metrics.sh — smoke against the autobuilder repo itself"
+    },
+    {
+      "id": "AC6",
+      "level": "SHOULD",
+      "description": "Strict clippy (clippy::pedantic + workspace lints) passes with -D warnings on the autobuilder bin. Workspace cargo check + cargo test --workspace pass under CI's RUSTFLAGS=-D warnings env.",
+      "test": ".github/workflows/ci.yml — exercised on every push"
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Every receipt produced by autobuilder includes a sha256 `receipt_digest` over its own canonicalized JSON (keys sorted), plus a UTC `captured_at` (RFC3339). The digest field is overwritten with an empty string before computing the digest so the field is self-binding.",
+      "test": "src/receipt.rs::write covers every receipt; visual inspection of any emitted receipt JSON"
+    }
+  ],
+  "scope": [
+    "Stage 1 intake (intent-card validation)",
+    "Stage 2 scaffold (templated project materialization)",
+    "Stage 3 iterate-and-prove loop (advance/revert)",
+    "Stage 4 risk gate (7 receipts + release receipt)",
+    "Stage 5 postmortem + gated self-evolution",
+    "Companion shell scripts in ~/.claude/skills/autobuilder/scripts/"
+  ],
+  "non_goals": [
+    "Spawning Claude subagents from the binary itself (that is the orchestrator's job)",
+    "Web-service, WASM, or embedded scaffolding (v1 supports cli + lib only)",
+    "Auto-applying self-evolution proposals (always gated for user review)",
+    "Re-running the underlying audit/test commands inside `gate` (gate only attests; producers own the work)"
+  ],
+  "hard_constraints": {
+    "rust_edition": "2024",
+    "target_kind": "cli",
+    "deny_unsafe": true,
+    "max_deps": null,
+    "msrv": "1.85",
+    "additional": {
+      "no_unwrap_in_src": true,
+      "no_expect_in_src": true,
+      "all_receipts_digest_bound": true
+    }
+  },
+  "five_whys_trace": [
+    {
+      "why": 1,
+      "q": "Why a Rust companion binary instead of a pure-skill scaffold?",
+      "a": "Shell is too easy to subvert (set -e off, grep eaten, jq missing). The load-bearing parts — metric extraction, digest binding, schema validation — need a typed implementation under tests."
+    },
+    {
+      "why": 2,
+      "q": "Why a 7-receipt gate instead of `cargo test && cargo clippy`?",
+      "a": "Each receipt covers a class of failure that the others miss: clippy doesn't see CI status, tests don't see proof-lane routing, and none of them produce an independent-review record. The gate is what makes 'ready' falsifiable."
+    },
+    {
+      "why": 3,
+      "q": "Why bootstrap autobuilder against itself before running it on other projects?",
+      "a": "If the gate model can't certify the binary that produces gate receipts, it can't be trusted on any other project. The meta-bootstrap is the cheapest adversarial test of the whole pipeline."
+    },
+    {
+      "why": 4,
+      "q": "Why deny unwrap/expect everywhere in src/ when most of this is glue code?",
+      "a": "Glue code that panics on a missing receipt or malformed JSON destroys the audit trail at exactly the moments the gate matters most. Erroring back to the caller keeps the diagnostic surface alive."
+    },
+    {
+      "why": 5,
+      "q": "Why digest-bind every receipt instead of trusting file timestamps?",
+      "a": "Timestamps lie under git checkout. A self-binding sha256 lets the gate detect tampering and lets reviewers re-verify by recomputing on the receipt's own contents."
+    }
+  ],
+  "ambiguities_resolved": [
+    {
+      "question": "Where does the autobuilder repo's 'project' live for the gate — repo root or autobuilder/ workspace?",
+      "resolution": "Repo root. agent/, scripts/, target/autobuilder/ all sit at /home/jsy/projects/autobuilder/. Proof-lanes globs use autobuilder/src/** prefix to match `git diff` output."
+    }
+  ],
+  "created_at": "2026-05-22T08:10:00Z"
+}

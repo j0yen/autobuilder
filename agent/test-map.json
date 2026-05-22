@@ -1,0 +1,13 @@
+{
+  "schema": "autobuilder.test_map.v1",
+  "default_test_command": "cd autobuilder && cargo test --workspace",
+  "ac_to_test": {
+    "AC1": "scripts/run-metrics.sh — calls `autobuilder rollback-plan --project . --base HEAD~5`",
+    "AC2": "scripts/run-metrics.sh — calls `autobuilder vti-plan --project . --base HEAD~5`",
+    "AC3": "scripts/run-metrics.sh — calls `autobuilder reviewer-agent prepare --project .`",
+    "AC4": "scripts/run-metrics.sh — calls `autobuilder ci-checks --project .`",
+    "AC5": "scripts/run-metrics.sh — verifies `autobuilder gate --project .` walks all 7 receipts",
+    "AC6": ".github/workflows/ci.yml — exercised on every push",
+    "AC7": "src/receipt.rs — every emitted receipt passes through receipt::write which stamps receipt_digest"
+  }
+}
