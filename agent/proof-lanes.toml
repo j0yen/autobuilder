@@ -66,6 +66,17 @@ globs = ["*.md", "PLAN.md", "PRD-*.md"]
 required_commands = []
 
 [[lane]]
+id = "skill"
+description = "Vendored Claude Code skill (prompts, rules, schemas, scripts, templates, SKILL.md)"
+globs = [
+  "skill/**",
+  "skill/SKILL.md",
+]
+required_commands = [
+  "bash skill/install.sh",
+]
+
+[[lane]]
 id = "config"
 description = "Top-level repo + workspace config (lints, deny, toolchain pins)"
 globs = [

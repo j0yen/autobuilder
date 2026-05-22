@@ -261,10 +261,13 @@ for id in "${AC_IDS[@]}"; do
 done
 
 # Run the BAD_RUST audit against the repo. The workspace lives at
-# autobuilder/ rather than the repo root, so `check_cargo_lock_committed`
-# fires falsely (there is no top-level Cargo.lock). Strip that one detector
-# from the published risk-gate receipt — but keep the raw audit on disk so
-# the filter is auditable.
+# autobuilder/ rather than the repo root, so two detectors fire on the
+# layout rather than on real problems:
+#   - check_cargo_lock_committed — no Cargo.lock at repo root
+#   - cargo_deny_check — no Cargo.toml at repo root for cargo-deny to read
+# Strip both from the published risk-gate receipt. CI runs cargo-deny
+# directly inside autobuilder/ via the workflow, so the supply-chain
+# check is still enforced — just not via this audit on this project.
 AUDIT_RAW="$OUT_DIR/audit.raw.json"
 RISK_GATE_RECEIPT="$OUT_DIR/receipts/risk-gate.json"
 mkdir -p "$OUT_DIR/receipts"
@@ -277,7 +280,9 @@ fi
 # resulting object is the autobuilder.bad_rust_audit.v1 receipt the gate
 # consumes.
 jq '
-  .findings |= map(select(.detector != "check_cargo_lock_committed")) |
+  .findings |= map(
+    select(.detector != "check_cargo_lock_committed" and .detector != "cargo_deny_check")
+  ) |
   .blocking_count = ([.findings[] | select(.severity == "blocking")] | length) |
   .advisory_count = ([.findings[] | select(.severity == "advisory")] | length)
 ' "$AUDIT_RAW" > "$RISK_GATE_RECEIPT"

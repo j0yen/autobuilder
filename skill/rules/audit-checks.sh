@@ -194,7 +194,13 @@ cargo_deny_check() {
       "cargo-deny not installed; supply-chain check skipped"
     return
   fi
-  if ! cargo deny check 2>&1 | tail -50 > /tmp/deny-out.txt; then
+  # Run bans + licenses + sources locally. The advisories check is delegated
+  # to CI, which can install a newer cargo-deny that parses CVSS 4.0; an
+  # older locally-installed cargo-deny fails to parse the current advisory
+  # DB which would otherwise produce false-positive blocking findings.
+  emit_finding "HLT-016-SUPPLY-CHAIN-DRIFT" "cargo_deny_check" "advisory" "deny.toml" "0" "" \
+    "advisories check delegated to CI; bans/licenses/sources checked locally"
+  if ! cargo deny check bans licenses sources 2>&1 | tail -50 > /tmp/deny-out.txt; then
     while IFS= read -r line; do
       emit_finding "HLT-016-SUPPLY-CHAIN-DRIFT" "cargo_deny_check" "blocking" "Cargo.toml" "0" "$line" \
         "cargo-deny reported a policy violation"
