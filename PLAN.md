@@ -387,24 +387,25 @@ What's deferred (explicit non-goals for v1, to surface in the postmortem):
 
 ### Resume point — Stage 3 (iterate the meta-PRD)
 
-- Project cwd: `/home/jsy/projects/autobuilder-metric-harness/`.
-- Branch: `autobuilder/autobuilder-metric-harness` (parent: `main@fc3fd57`). Iter-0 baseline already recorded.
-- Only `src/main.rs` is editable per `agent/owner-map.json`; everything else is harness-readonly.
+- Project cwd: `/home/jsy/projects/autobuilder/autobuilder/crates/metric-harness/` (merged into the autobuilder repo via subtree at commit `389ce2c` and relocated under the workspace at `07b0413`). The original standalone repo at `/home/jsy/projects/autobuilder-metric-harness/` still exists on disk but is no longer the source of truth.
+- Branch: `main` of the autobuilder repo (no more dedicated `autobuilder/autobuilder-metric-harness` branch — iter commits land directly on `main` for now; if/when iteration moves to a dedicated branch, document it here).
+- Only `crates/metric-harness/src/main.rs` is editable per `crates/metric-harness/agent/owner-map.json`; everything else under that crate is harness-readonly.
 - Edit-agent contract for the metric-harness binary's CLI (locked by the test stubs):
   - `autobuilder-metric-harness <project_path> [--head-sha <sha>] [--iteration <n>] [--timeout-seconds <n>] [--pretty]`
   - Exit codes: 0 clean, 1 partial (still emits metrics), 2 missing/non-executable run-metrics.sh, 3 schema validation failure on metrics.json.
-- Iter-0 metric: 0/10 (committed at `fc3fd57`, receipt at `target/autobuilder/receipts/fc3fd57edd588f7e597967b008d53d97e02417ea.json`). Target: 10/10 plus all 7 receipts on the Stage 4 risk gate.
-- Next step: drive iter-1 onward. A Claude session reads the intent-card + the next failing AC test, edits `src/main.rs` to implement that AC, runs:
+- Iter-0 baseline from the standalone repo (commit `fc3fd57` + receipt for that sha) was scaffold-only and is no longer authoritative at the merged location — re-run iter-0 against the in-workspace path to capture a fresh baseline at the current HEAD before iterating.
+- Next step: re-baseline + iterate. From `/home/jsy/projects/autobuilder/`:
 
   ```
-  cd /home/jsy/projects/autobuilder-metric-harness
-  git commit -am "iter-1: <hypothesis>"
+  cd autobuilder/crates/metric-harness
   /home/jsy/projects/autobuilder/autobuilder/target/release/autobuilder loop \
-      --project . --iteration 1 --head-sha "$(git rev-parse HEAD)" \
-      --description "<short>"
+      --project . --iteration 0 --head-sha "$(git rev-parse HEAD)" \
+      --description "post-merge baseline"
+  # then for each iter:
+  #   edit src/main.rs, git commit -am "iter-N: <hypothesis>", re-run with --iteration N
   ```
 
-  Then acts on the printed verdict: advance keeps the commit, revert does `git reset --hard HEAD~1`, crash investigates run.log. Repeat until 10/10 or the budget is exhausted.
+  Act on the printed verdict: advance keeps the commit, revert does `git reset --hard HEAD~1` (destructive; user-confirmed once per session is fine), crash investigates run.log. Repeat until 10/10 or the budget is exhausted.
 
 ### Known issues to fold into the Phase D postmortem
 
@@ -420,7 +421,7 @@ What's deferred (explicit non-goals for v1, to surface in the postmortem):
 2. Verify Phase A files exist: `ls /home/jsy/.claude/skills/autobuilder/`.
 3. Verify Phase B + Stage 3 binary builds: `cd /home/jsy/projects/autobuilder/autobuilder && cargo build --release` (toolchain auto-installs if missing).
 4. Verify scaffolded project compiles + tests run + baseline metrics emit:
-   - `cd /home/jsy/projects/autobuilder-metric-harness && cargo test --no-fail-fast` → expect 17 failures + 1 proptest placeholder pass
+   - `cd /home/jsy/projects/autobuilder/autobuilder/crates/metric-harness && cargo test --no-fail-fast` → expect 17 failures + 1 proptest placeholder pass
    - `/home/jsy/projects/autobuilder/autobuilder/target/release/autobuilder loop --project . --iteration 0 --head-sha "$(git rev-parse HEAD)" --description "verify baseline"` → expect `verdict=baseline`, results.tsv + receipts/ written.
 5. Read the PRD: `/home/jsy/.claude/plans/autobuilder-prd-metric-harness.md`.
 6. Read the intent-card: `~/.claude/skills/autobuilder/proposals/intake-autobuilder-metric-harness-20260521T000000Z.json`.
