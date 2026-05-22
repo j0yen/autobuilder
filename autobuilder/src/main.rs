@@ -2,24 +2,29 @@
 //!
 //! Owns the load-bearing parts of the pipeline that should not live in shell:
 //! intent-card validation, scaffold materialization, the experiment-loop
-//! runner, EvidencePack writing, the 7-receipt risk gate, postmortem
+//! runner, `EvidencePack` writing, the 7-receipt risk gate, postmortem
 //! aggregation, and the gated self-evolution diff.
 //!
-//! Each subcommand is currently a stub (`unimplemented!()`) — the skill's
-//! shell scripts fall back to minimum-viable behavior in the meantime. The
-//! first meta-PRD that autobuilder will dogfood against itself is the
-//! `metric-harness` subcommand, per PLAN.md Phase C.
+//! Several subcommands are still stubs that return a typed error explaining
+//! what they should do; the skill's shell scripts fall back to minimum-viable
+//! behavior in the meantime. The first meta-PRD that autobuilder dogfooded
+//! against itself is the `metric-harness` subcommand, per PLAN.md Phase C.
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+mod ci_checks;
 mod evolve;
 mod gate;
 mod intake;
 mod loop_runner;
 mod metric_harness;
 mod postmortem;
+mod receipt;
+mod reviewer;
+mod rollback;
 mod scaffold;
+mod vti_plan;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -51,6 +56,22 @@ enum Command {
     /// Check the 7-receipt risk gate (Stage 4).
     Gate(gate::Args),
 
+    /// Verify every commit in HEAD~N..HEAD is git-revert-clean; emit rollback receipt (Stage 4).
+    #[command(name = "rollback-plan")]
+    RollbackPlan(rollback::Args),
+
+    /// Prepare / finalize the reviewer-agent receipt (Stage 4).
+    #[command(name = "reviewer-agent")]
+    ReviewerAgent(reviewer::Args),
+
+    /// Route changed paths through agent/proof-lanes.toml; emit vti-plan receipt (Stage 4).
+    #[command(name = "vti-plan")]
+    VtiPlan(vti_plan::Args),
+
+    /// Verify CI workflow runs on HEAD are green via `gh`; emit ci-checks receipt (Stage 4).
+    #[command(name = "ci-checks")]
+    CiChecks(ci_checks::Args),
+
     /// Aggregate run artifacts into a postmortem (Stage 5).
     Postmortem(postmortem::Args),
 
@@ -66,6 +87,10 @@ fn main() -> Result<()> {
         Command::LoopCmd(args) => loop_runner::run(args),
         Command::MetricHarness(args) => metric_harness::run(args),
         Command::Gate(args) => gate::run(args),
+        Command::RollbackPlan(args) => rollback::run(args),
+        Command::ReviewerAgent(args) => reviewer::run(args),
+        Command::VtiPlan(args) => vti_plan::run(args),
+        Command::CiChecks(args) => ci_checks::run(args),
         Command::Postmortem(args) => postmortem::run(args),
         Command::Evolve(args) => evolve::run(args),
     }

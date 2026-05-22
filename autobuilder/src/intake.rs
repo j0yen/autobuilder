@@ -4,7 +4,7 @@
 //! (`prompts/prd-intake-5whys.md`); this subcommand just enforces the
 //! schema contract on the output.
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::Args as ClapArgs;
 use std::path::PathBuf;
 
@@ -16,5 +16,7 @@ pub(crate) struct Args {
 }
 
 pub(crate) fn run(_args: Args) -> Result<()> {
-    unimplemented!("autobuilder intake: schema-validate the intent-card.json against schemas/intent-card.schema.json")
+    Err(anyhow!(
+        "autobuilder intake: not yet implemented — should schema-validate the intent-card.json against schemas/intent-card.schema.json"
+    ))
 }

@@ -2,7 +2,7 @@
 //! `~/.claude/skills/autobuilder/templates/scaffold/` using the intent-card
 //! as the source of substitutions.
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::Args as ClapArgs;
 use std::path::PathBuf;
 
@@ -18,10 +18,9 @@ pub(crate) struct Args {
 }
 
 pub(crate) fn run(_args: Args) -> Result<()> {
-    unimplemented!(
-        "autobuilder scaffold: copy templates/scaffold/ into <out>, \
-         substitute {{intent_slug}} and {{target_kind}}, generate \
-         tests/acceptance_<ac>.rs files from intent-card ACs, instantiate \
-         AUTOBUILDER_PROGRAM.md from the .tmpl"
-    )
+    Err(anyhow!(
+        "autobuilder scaffold: not yet implemented — should copy templates/scaffold/ into <out>, \
+         substitute {{intent_slug}} / {{target_kind}}, generate tests/acceptance_<ac>.rs files \
+         from intent-card ACs, instantiate AUTOBUILDER_PROGRAM.md from the .tmpl"
+    ))
 }

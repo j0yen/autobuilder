@@ -3,7 +3,7 @@
 //! (via the postmortem-writer prompt), and queues a machine-readable
 //! `evolution-proposal-*.json` in `~/.claude/skills/autobuilder/proposals/`.
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::Args as ClapArgs;
 use std::path::PathBuf;
 
@@ -15,9 +15,9 @@ pub(crate) struct Args {
 }
 
 pub(crate) fn run(_args: Args) -> Result<()> {
-    unimplemented!(
-        "autobuilder postmortem: load results.tsv + receipts + capsules, \
+    Err(anyhow!(
+        "autobuilder postmortem: not yet implemented — should load results.tsv + receipts + capsules, \
          render postmortem.md, write evolution-proposal-<slug>-<ts>.json into \
          ~/.claude/skills/autobuilder/proposals/"
-    )
+    ))
 }

@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "autobuilder/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: autobuilder
+
+jobs:
+  build:
+    name: build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: install rust toolchain (pinned by autobuilder/rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+        with:
+          working-directory: autobuilder
+
+      - name: install cargo-deny
+        uses: taiki-e/install-action@84c20235bedc3797f1cf1146ac240e2c3df9b7df # v2.49.27
+        with:
+          tool: cargo-deny
+
+      - name: cargo check --workspace
+        run: cargo check --workspace
+
+      # Strict clippy is enforced on the autobuilder bin only. The
+      # autobuilder-metric-harness crate is held to its own dogfooded
+      # discipline (see crates/metric-harness/) and runs clippy at warn-level
+      # so its existing lints don't block CI.
+      - name: cargo clippy --bin autobuilder (strict)
+        run: cargo clippy --bin autobuilder -- -D warnings
+
+      - name: cargo clippy -p autobuilder-metric-harness (warn-level)
+        run: cargo clippy -p autobuilder-metric-harness
+
+      - name: cargo test --workspace
+        run: cargo test --workspace
+
+      - name: cargo deny check
+        run: cargo deny check

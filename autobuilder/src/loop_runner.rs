@@ -15,14 +15,13 @@
 //! to follow-up work — this is the minimum that makes the metric pipeline
 //! load-bearing.
 
+use crate::receipt;
 use anyhow::{Context, Result, anyhow};
 use clap::Args as ClapArgs;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, ClapArgs)]
 pub(crate) struct Args {
@@ -360,7 +359,7 @@ struct AuditDoc {
 
 #[allow(clippy::needless_pass_by_value)] // `Receipt<'_>` is cheap; by-value reads cleaner at the call site
 fn write_receipt(project: &Path, r: Receipt<'_>) -> Result<()> {
-    let captured_at = now_rfc3339()?;
+    let captured_at = receipt::now_rfc3339()?;
     let doc = ReceiptDoc {
         schema: "autobuilder.iteration_receipt.v1",
         head_sha: r.head_sha,
@@ -379,92 +378,9 @@ fn write_receipt(project: &Path, r: Receipt<'_>) -> Result<()> {
         captured_at,
         receipt_digest: String::new(),
     };
-    let mut value = serde_json::to_value(&doc)?;
-    set_digest(&mut value)?;
-
-    let receipts_dir = project.join("target/autobuilder/receipts");
-    fs::create_dir_all(&receipts_dir)?;
-    let receipt_path = receipts_dir.join(format!("{}.json", r.head_sha));
-    let bytes = serde_json::to_vec_pretty(&value)?;
-    fs::write(&receipt_path, bytes)?;
-    Ok(())
-}
-
-fn set_digest(value: &mut serde_json::Value) -> Result<()> {
-    if let Some(obj) = value.as_object_mut() {
-        obj.insert(
-            "receipt_digest".into(),
-            serde_json::Value::String(String::new()),
-        );
-    }
-    let canonical = canonical_json_bytes(value);
-    let mut hasher = Sha256::new();
-    hasher.update(&canonical);
-    let digest = format!("sha256:{:x}", hasher.finalize());
-    let obj = value
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("receipt is not a JSON object"))?;
-    obj.insert("receipt_digest".into(), serde_json::Value::String(digest));
-    Ok(())
-}
-
-fn canonical_json_bytes(value: &serde_json::Value) -> Vec<u8> {
-    let sorted = sort_keys(value);
-    serde_json::to_vec(&sorted).unwrap_or_default()
-}
-
-fn now_rfc3339() -> Result<String> {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is before UNIX epoch")?
-        .as_secs();
-    Ok(secs_to_rfc3339(secs))
-}
-
-fn secs_to_rfc3339(secs: u64) -> String {
-    let day = secs / 86_400;
-    let rem = secs % 86_400;
-    let hour = rem / 3_600;
-    let minute = (rem % 3_600) / 60;
-    let second = rem % 60;
-    // i64 fits all plausible day counts (u64/86400 ≤ 2^52); narrow safely.
-    let days = i64::try_from(day).unwrap_or(0);
-    let (year, month, mday) = civil_from_days(days);
-    format!("{year:04}-{month:02}-{mday:02}T{hour:02}:{minute:02}:{second:02}Z")
-}
-
-// Howard Hinnant's `civil_from_days` (public domain).
-// Converts days-since-1970-01-01 to (year, month, day).
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = u64::try_from(z - era * 146_097).unwrap_or(0);
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = i64::try_from(yoe).unwrap_or(0) + era * 400;
-    let day_of_year = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * day_of_year + 2) / 153;
-    let d = u32::try_from(day_of_year - (153 * mp + 2) / 5 + 1).unwrap_or(1);
-    let m = u32::try_from(if mp < 10 { mp + 3 } else { mp - 9 }).unwrap_or(1);
-    let year = if m <= 2 { y + 1 } else { y };
-    (year, m, d)
-}
-
-fn sort_keys(value: &serde_json::Value) -> serde_json::Value {
-    match value {
-        serde_json::Value::Object(map) => {
-            let mut sorted = serde_json::Map::new();
-            let mut keys: Vec<&String> = map.keys().collect();
-            keys.sort();
-            for k in keys {
-                if let Some(v) = map.get(k) {
-                    sorted.insert(k.clone(), sort_keys(v));
-                }
-            }
-            serde_json::Value::Object(sorted)
-        }
-        serde_json::Value::Array(items) => {
-            serde_json::Value::Array(items.iter().map(sort_keys).collect())
-        }
-        other => other.clone(),
-    }
+    let value = serde_json::to_value(&doc)?;
+    let receipt_path = project
+        .join("target/autobuilder/receipts")
+        .join(format!("{}.json", r.head_sha));
+    receipt::write(&receipt_path, value)
 }
