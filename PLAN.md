@@ -359,18 +359,52 @@ Visibility was tightened on the subcommand modules to `pub(crate)` to satisfy th
   - `cargo check` and `cargo test` lines now end with `|| true` so a failing gate doesn't `set -e` the script before the emit step. Mirrors AC5's invariant ("emit metrics even when exit 1") in the bash bootstrap.
   - `BLOCKING`/`ADVISORY` are defaulted with `${VAR:-0}` after the jq parse, so an empty `target/autobuilder/audit.json` (which happens when `audit-checks.sh` itself aborts before emitting) doesn't crash the final `--argjson` call.
 
-### Resume point — Stage 3 (Iterate-and-Prove Loop)
+### Stage 3 — single-iteration `autobuilder loop` runner: LANDED
 
-- Cwd: `/home/jsy/projects/autobuilder-metric-harness/`.
-- Branch: `autobuilder/autobuilder-metric-harness` (parent: `main@fc3fd57`).
-- Only `src/main.rs` is editable. Everything else (`scripts/`, `tests/`, `Cargo.toml`, `clippy.toml`, `deny.toml`, `rust-toolchain.toml`, `agent/`, `.github/`) is read-only per `agent/owner-map.json`.
-- Edit-agent contract for the binary's CLI (locked by the test stubs):
+Commit `a5a3c73` in the autobuilder workspace. The companion binary's `loop` subcommand is implemented at `/home/jsy/projects/autobuilder/autobuilder/src/loop_runner.rs` (~350 lines incl. RFC3339 helper and canonical-JSON digest). Surface:
+
+```
+autobuilder loop --project <p> --iteration <n> --head-sha <sha> [--description <text>]
+```
+
+What it does, in order: read `<p>/agent/intent-card.json` for the unfakeable metric name + `lower_is_better`, spawn `bash <p>/scripts/run-metrics.sh`, parse the resulting `target/autobuilder/metrics.json` against schema `autobuilder.metrics.v1`, extract the scalar by name from `metrics.scalars`, compare against the last metric column of `target/autobuilder/results.tsv` (if any), decide verdict ∈ {baseline, advance, revert, crash}, append a new TSV row, write a sha256-digested per-iteration receipt (`autobuilder.iteration_receipt.v1`) to `target/autobuilder/receipts/<head_sha>.json`, and print a one-line summary to stdout.
+
+Verdict logic (lifted from autoresearch + adapted):
+- `blocking_audit > 0` → crash.
+- `script_exit != 0 && previous.is_none()` → crash (no prior baseline to compare against).
+- `iteration == 0` → baseline.
+- Otherwise: `improved = (lower_is_better ? current < prev : current > prev)` → advance else revert.
+
+End-to-end verified against `/home/jsy/projects/autobuilder-metric-harness/` at iter-0: results.tsv gains header + baseline row, receipt JSON written with valid `receipt_digest`, run.log captured, exit code 0.
+
+Workspace deps used: `clap`, `anyhow`, `serde`, `serde_json`, `sha2`. Time formatting is std-only (Howard Hinnant `civil_from_days`); the `time` crate would have been cleaner but its 0.3.47 requires Rust 1.88 vs our 1.85 toolchain pin. Clippy clean on loop_runner.rs (only the other stub modules' `unimplemented!()` warnings remain workspace-wide).
+
+What's deferred (explicit non-goals for v1, to surface in the postmortem):
+- **`FailureCapsule` emission**. On verdict=crash we just set the status; we don't yet write `autobuilder.failure_capsule.v1` JSON. The schema is vendored in `~/.claude/skills/autobuilder/schemas/failure-capsule.schema.json` and ready to wire.
+- **Proof-lane routing**. `agent/proof-lanes.toml` is not consulted yet — the loop runs whatever `run-metrics.sh` does, regardless of which paths changed.
+- **Multi-iteration orchestration**. The binary runs ONE iteration; the caller drives the LOOP. Either Claude does it autoresearch-style, or we add an outer `autobuilder loop --iterate-until <budget>` mode that shells out to the edit-agent.
+- **Edit-agent invocation**. The binary doesn't call out to Claude (or anything else) to make `src/` edits. That's the orchestrator's job.
+
+### Resume point — Stage 3 (iterate the meta-PRD)
+
+- Project cwd: `/home/jsy/projects/autobuilder-metric-harness/`.
+- Branch: `autobuilder/autobuilder-metric-harness` (parent: `main@fc3fd57`). Iter-0 baseline already recorded.
+- Only `src/main.rs` is editable per `agent/owner-map.json`; everything else is harness-readonly.
+- Edit-agent contract for the metric-harness binary's CLI (locked by the test stubs):
   - `autobuilder-metric-harness <project_path> [--head-sha <sha>] [--iteration <n>] [--timeout-seconds <n>] [--pretty]`
   - Exit codes: 0 clean, 1 partial (still emits metrics), 2 missing/non-executable run-metrics.sh, 3 schema validation failure on metrics.json.
-- Iter-0 metric: 0/10. Target: 10/10 plus all 7 receipts on the Stage 4 risk gate.
-- Stage 3 entry has two viable paths, blocked on the SAME fork as before — `autobuilder loop_runner` is still `unimplemented!()` in the companion binary. Either:
-  1. **Drive Stage 3 by hand** (recommended at pause): a Claude session reads `agent/intent-card.json` + the 10 failing tests, edits `src/main.rs`, runs `bash scripts/run-metrics.sh`, parses `target/autobuilder/metrics.json`, advances/reverts manually, repeats. Slow but lets us learn the loop's shape before automating it.
-  2. **Implement `autobuilder loop` first** in `/home/jsy/projects/autobuilder/autobuilder/src/loop_runner.rs`: ~200 lines (git state check, cmd dispatch, results.tsv append, advance/revert decisions). Cleaner but another Rust side-quest before any meta-PRD progress.
+- Iter-0 metric: 0/10 (committed at `fc3fd57`, receipt at `target/autobuilder/receipts/fc3fd57edd588f7e597967b008d53d97e02417ea.json`). Target: 10/10 plus all 7 receipts on the Stage 4 risk gate.
+- Next step: drive iter-1 onward. A Claude session reads the intent-card + the next failing AC test, edits `src/main.rs` to implement that AC, runs:
+
+  ```
+  cd /home/jsy/projects/autobuilder-metric-harness
+  git commit -am "iter-1: <hypothesis>"
+  /home/jsy/projects/autobuilder/autobuilder/target/release/autobuilder loop \
+      --project . --iteration 1 --head-sha "$(git rev-parse HEAD)" \
+      --description "<short>"
+  ```
+
+  Then acts on the printed verdict: advance keeps the commit, revert does `git reset --hard HEAD~1`, crash investigates run.log. Repeat until 10/10 or the budget is exhausted.
 
 ### Known issues to fold into the Phase D postmortem
 
@@ -378,19 +412,19 @@ Visibility was tightened on the subcommand modules to `pub(crate)` to satisfy th
 2. **`rules/audit-checks.sh`** itself aborts mid-run (exit 1, empty stdout) on a fresh scaffold — likely a `check_seven_receipts_present` or similar pre-condition that's not met at baseline. Should be defensive: emit valid `{findings:[], blocking_count:0, advisory_count:0}` even when no checks pass.
 3. The clippy `print_stderr = "warn"` denial means the template `src/main.rs` stub (which uses `eprintln!`) cannot pass `clippy -- -D warnings`. Either relax the lint for `src/main.rs` or have the scaffold emit a different stub.
 4. The bash `AC_PASSING` grep counts function-level passes; `AC_TOTAL` counts files. They're not directly comparable — fine as a coarse gradient, but the Rust harness must normalize this.
+5. The `time` crate (cleaner RFC3339 path) requires rustc ≥ 1.88 in its current line; we're pinned to 1.85.0 via `rust-toolchain.toml`. Until the toolchain pin is bumped (decide whether to track stable), keep using the std-only `civil_from_days` helper in `loop_runner.rs`.
 
 ### How to resume
 
 1. Read this `PLAN.md` in full (especially the resolved-decisions and Phase C blocks).
 2. Verify Phase A files exist: `ls /home/jsy/.claude/skills/autobuilder/`.
-3. Verify Phase B compiles: `cd /home/jsy/projects/autobuilder/autobuilder && cargo check` (toolchain auto-installs if missing).
+3. Verify Phase B + Stage 3 binary builds: `cd /home/jsy/projects/autobuilder/autobuilder && cargo build --release` (toolchain auto-installs if missing).
 4. Verify scaffolded project compiles + tests run + baseline metrics emit:
    - `cd /home/jsy/projects/autobuilder-metric-harness && cargo test --no-fail-fast` → expect 17 failures + 1 proptest placeholder pass
-   - `bash scripts/run-metrics.sh && jq . target/autobuilder/metrics.json` → expect `ac_passing_count: 0, ac_total_count: 10`
+   - `/home/jsy/projects/autobuilder/autobuilder/target/release/autobuilder loop --project . --iteration 0 --head-sha "$(git rev-parse HEAD)" --description "verify baseline"` → expect `verdict=baseline`, results.tsv + receipts/ written.
 5. Read the PRD: `/home/jsy/.claude/plans/autobuilder-prd-metric-harness.md`.
 6. Read the intent-card: `~/.claude/skills/autobuilder/proposals/intake-autobuilder-metric-harness-20260521T000000Z.json`.
-7. Confirm with the user which Stage-3 path to take (drive by hand, OR implement `autobuilder loop` first).
-8. Begin Stage 3.
+7. Begin iterating: read the next failing AC, edit `src/main.rs`, commit, invoke `autobuilder loop` with the new iteration number + head sha + a short description. Repeat.
 
 Source repos (do not re-clone, already present):
 - `/home/jsy/projects/autobuilder/autoresearch-macos/`
