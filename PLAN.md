@@ -361,7 +361,7 @@ Visibility was tightened on the subcommand modules to `pub(crate)` to satisfy th
 
 ### Stage 3 — single-iteration `autobuilder loop` runner: LANDED
 
-Commit `a5a3c73` in the autobuilder workspace. The companion binary's `loop` subcommand is implemented at `/home/jsy/projects/autobuilder/autobuilder/src/loop_runner.rs` (~350 lines incl. RFC3339 helper and canonical-JSON digest). Surface:
+Commit `5333e6c` in the autobuilder workspace. The companion binary's `loop` subcommand is implemented at `/home/jsy/projects/autobuilder/autobuilder/src/loop_runner.rs` (~350 lines incl. RFC3339 helper and canonical-JSON digest). Surface:
 
 ```
 autobuilder loop --project <p> --iteration <n> --head-sha <sha> [--description <text>]
