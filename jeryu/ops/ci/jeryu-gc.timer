@@ -1,0 +1,14 @@
+[Unit]
+Description=Jeryu SmartCache GC deep-sweep (companion to jeryu-gcd.service)
+
+[Timer]
+# Daemon (jeryu-gcd.service) handles continuous pressure response. This
+# timer is the deep-sweep safety net: cadence dropped from 6h to 12h
+# since the daemon already covers the fast path.
+OnBootSec=30min
+OnUnitActiveSec=12h
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,21 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore generated audit receipts, build artifacts, and documented public sentinels"
+paths = [
+  '''(^|/)target/''',
+  '''(^|/)\.jankurai/''',
+  '''(^|/)agent/repo-score\.json$''',
+  '''(^|/)agent/repo-score\.md$''',
+  '''(^|/)agent/score-history\.csv$''',
+  '''(^|/)agent/score-history\.jsonl$''',
+  '''(^|/)agent-map\.json$''',
+  '''(^|/)test-map\.json$''',
+  '''(^|/)src/honeypot\.rs$''',
+  '''(^|/)tips/''',
+  '''(^|/)docs/''',
+  '''(^|/)paper/''',
+  '''(^|/)CHANGELOG\.md$''',
+  '''(^|/)README\.md$''',
+]

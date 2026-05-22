@@ -1,0 +1,112 @@
+name: Bug Report
+description: Submit a canonical jeryu bug report
+title: "[BUG] "
+labels: ["type::bug", "status::needs-triage"]
+body:
+  - type: input
+    id: target_project
+    attributes:
+      label: Target project
+      description: Project that owns the fix.
+      placeholder: redlineDB
+    validations:
+      required: true
+  - type: input
+    id: source_project
+    attributes:
+      label: Source project
+      description: Project where the bug was observed.
+      placeholder: veox
+    validations:
+      required: true
+  - type: input
+    id: component
+    attributes:
+      label: Component
+      placeholder: adapter, tui, mcp, cli
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current behavior
+      description: What is happening now?
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: What should happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Reproduction steps
+      description: Exact steps, or point to evidence below if steps are not available.
+      placeholder: |
+        1. Run ...
+        2. Observe ...
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs, traces, screenshots, test receipts, or repro scripts. Redact secrets.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, commit SHA, command, runtime, config
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      options:
+        - always
+        - often
+        - intermittent
+        - once
+        - unknown
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who or what is blocked?
+    validations:
+      required: true
+  - type: dropdown
+    id: security_privacy
+    attributes:
+      label: Security or privacy impact
+      options:
+        - no security or privacy impact
+        - possible security or privacy impact
+        - confirmed security or privacy impact
+    validations:
+      required: true
+  - type: checkboxes
+    id: no_secrets
+    attributes:
+      label: Secret handling
+      options:
+        - label: I confirmed this report does not include secrets, credentials, private keys, or unredacted personal data.
+          required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options: ["S0", "S1", "S2", "S3", "S4"]
+      default: 2
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ["P0", "P1", "P2", "P3", "P4"]
+      default: 2
+    validations:
+      required: true
