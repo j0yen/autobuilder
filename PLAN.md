@@ -12,6 +12,30 @@ The intent: **combine these into a single Claude Code skill called `autobuilder`
 
 Goal: every Rust artifact emitted by `autobuilder` is (a) generated from a structured Intent Card derived from the PRD via 4/5-Whys, (b) iterated under a narrow falsifiable loop (autoresearch model), (c) accompanied by a `FailureCapsule`/`EvidencePack`-style receipt bundle (jeryu model), (d) gated by lifted jankurai rules and a risk gate before "ready to ship," and (e) used as input to a postmortem that updates the skill itself.
 
+## Status (2026-05-22)
+
+All 12 subcommands of the `autobuilder` binary are implemented (no more `Err(...)` stubs):
+
+- **Stage 1 — `intake`** ✓ — hand-rolled validator for `autobuilder.intent_card.v1` covering required fields, enums, length/pattern constraints, `additionalProperties:false` at every object level, `format:date-time` on `created_at`, `ambiguities_resolved` shape, and `msrv`/`max_deps` constraints.
+- **Stage 2 — `scaffold`** ✓ — copies `templates/scaffold/` → `--out`, substitutes `{{intent_slug}}`/`{{target_kind}}`, generates one `tests/acceptance_<id>.rs` per AC, instantiates `agent/AUTOBUILDER_PROGRAM.md` from the `.tmpl`.
+- **Stage 3 — `loop`** ✓ — single-iteration runner; reads intent-card → runs `scripts/run-metrics.sh` → emits per-iteration receipt + appends `results.tsv`. Dogfooded against `tuner-metadata-scorer` (iter 0 baseline → iter 1 advance).
+- **Stage 3 — `metric-harness`** ✓ — wrapper that runs the harness + schema-validates `target/autobuilder/metrics.json` against `autobuilder.metrics.v1` + re-emits normalized.
+- **Stage 4 — `rollback-plan` / `vti-plan` / `reviewer-agent` / `ci-checks` / `gate`** ✓ — all five producers + the walker land; autobuilder's own repo passes `gate` with verdict=pass (release receipt at `target/autobuilder/release-receipt.json`, digest-bound).
+- **Stage 5 — `postmortem`** ✓ — aggregates `results.tsv` + receipts + capsules into `postmortem.md` and queues `evolution-proposal-<slug>-<ts>.json`.
+- **Stage 5 — `evolve`** ✓ — gated aggregator over proposals; emits `evolve-report-<date>.md` + `evolve-diff-<date>.patch` (placeholder diff). Never auto-applies.
+
+Shell harness fixes applied (skill-local, outside repo):
+- `~/.claude/skills/autobuilder/rules/audit-checks.sh` no longer aborts mid-run; emits valid envelope on every code path; receipt-presence checks removed (the gate owns them).
+- `~/.claude/skills/autobuilder/templates/scaffold/scripts/run-metrics.sh` no longer aborts before emitting `metrics.json` on a failing iteration.
+- `~/.claude/skills/autobuilder/scripts/risk-gate.sh` resolves the binary from PATH or well-known build paths.
+
+CI: `.github/workflows/ci.yml` lives at the repo root, runs `cargo check --workspace`, `cargo clippy --bin autobuilder -- -D warnings`, `cargo test --workspace`, and `cargo deny check` against the `autobuilder/` workspace. Green on every commit since `12225fd`.
+
+Open follow-ups (none blocking):
+- Iterate `tuner-metadata-scorer` past AC1 — 8 of 9 ACs still panic.
+- The strengthened `scripts/run-metrics.sh` covers AC1–AC7 with observable contracts now (not just `--help`), but the runtime intake/scaffold smokes use a synthetic intent-card; a real AC for the autobuilder repo's own intent-card validation would close the last assert-by-proxy.
+- `metric-harness` schema validator is lighter than the full `autobuilder.metrics.v1` schema — it asserts presence + types but not field-by-field constraints. Tighten if it ever falsely passes.
+
 ## Architecture
 
 ```
@@ -413,31 +437,32 @@ What's deferred (explicit non-goals for v1, to surface in the postmortem):
 6. **`failure_kind` not in the `autobuilder.metrics.v1` schema doc**. The metric-harness emits this field on timeout/build_error/metric_emission_failure paths (per AC8, AC9), but `crates/metric-harness/scripts/run-metrics.sh:7-22` documents the schema without it. Either add `failure_kind: <string or null>` to the schema spec, or carve it out as a synthetic-only extension.
 7. **AC ceiling vs. PRD target mismatch.** The PRD declared target=10 for `acceptance_tests_passing_count`; the bash counts function-level passes (max 17). Loop's verdict logic just checks "improved", so the gradient still works — but a future PRD needs to declare its target in the same units the bash counts in, or the bash needs to count in the units the PRD declares.
 
-### Resume point — Stage 4 (Risk Gate)
+### Resume point — Stage 4 (Risk Gate) — LANDED 2026-05-22
 
-Stage 3 hit the ceiling on iter-1. Next phase per the architecture is Stage 4: the 7-receipt risk gate (`PLAN.md:134-148`). Of the 7:
-- `intake` — DONE (intent-card at `~/.claude/skills/autobuilder/proposals/intake-autobuilder-metric-harness-20260521T000000Z.json`).
-- `proof-receipt` — DONE per-iteration via `autobuilder loop` (`crates/metric-harness/target/autobuilder/receipts/<sha>.json`). May need an aggregation step or a "release receipt" on HEAD.
-- `vti-plan` — NOT STARTED. `crates/metric-harness/agent/proof-lanes.toml` exists from the scaffold but is not consulted by any tool. Needs a path-router that resolves each changed file to ≥1 lane.
-- `risk-gate` — PARTIAL. `~/.claude/skills/autobuilder/rules/audit-checks.sh` exists with 22 detectors but has the abort-on-fresh-scaffold bug (issue #2 above). Needs the defensive fix + an integration that fails the gate on blocking findings.
-- `reviewer-agent` — NOT STARTED. Subagent prompt exists at `~/.claude/skills/autobuilder/prompts/reviewer-agent.md`; needs a launcher that runs it against `HEAD~N..HEAD` and writes the decision receipt.
-- `rollback-plan` — NOT STARTED. Need `target/autobuilder/rollback.md` per the architecture; trivially writable since iter commits are linear (single revert per iter).
-- `ci-checks` — NOT STARTED. `templates/scaffold/.github/workflows/ci.yml` exists but has never been run; needs a green run on a fresh clone (and a `.github/workflows/ci.yml` for the autobuilder repo itself, which doesn't exist yet).
+All 7 receipt producers and the gate walker are implemented in the autobuilder bin. The full bootstrap has been demonstrated against autobuilder's own repo (verdict=pass) and against the scaffolded `tuner-metadata-scorer` project (one advance cycle, iter 0 → iter 1). See the "Status (2026-05-22)" block at the top of this file for the per-receipt summary.
 
-Suggested order: rollback-plan (trivial) → fix audit-checks.sh defensive bug → reviewer-agent launcher → vti-plan path router → ci-checks (needs the autobuilder repo to have its own CI). Then a `gate` subcommand on the autobuilder binary that walks all 7 and emits a release-receipt.
+Quick verification commands:
 
-Alternative path (deferred): the Phase D postmortem from this Stage 3 run. PLAN line 286-294 calls for "postmortem; this is the v1 acceptance test" before Phase D backfill. The known-issues list above is the postmortem in seed form.
+```
+cd /home/jsy/projects/autobuilder
+PATH="$HOME/.cargo/bin:$PATH" autobuilder/target/release/autobuilder gate --project .
+# Expect: receipts=7 pass=7 verdict=pass
+
+PATH="$HOME/.cargo/bin:$PATH" autobuilder/target/release/autobuilder intake \
+  --validate agent/intent-card.json
+# Expect: "valid (slug=autobuilder target=cli acs=7)"
+```
 
 ### How to resume
 
-1. Read this `PLAN.md` in full (especially the resolved-decisions, Phase C, Stage 3 history, and known-issues blocks).
-2. Verify Phase A files exist: `ls /home/jsy/.claude/skills/autobuilder/`.
-3. Verify Phase B + Stage 3 binary builds: `cd /home/jsy/projects/autobuilder/autobuilder && cargo build --release` (toolchain auto-installs if missing; `~/.cargo/bin` must be on PATH).
-4. Verify iter-1 still green: `cd /home/jsy/projects/autobuilder/autobuilder/crates/metric-harness && PATH="$HOME/.cargo/bin:$PATH" cargo test` → expect 17 acceptance + 1 proptest placeholder all pass.
-5. Verify the loop runner sees the same: `PATH="$HOME/.cargo/bin:$PATH" /home/jsy/projects/autobuilder/autobuilder/target/release/autobuilder loop --project . --iteration N --head-sha "$(git rev-parse HEAD)" --description "verify"` for some N > 1 → expect `verdict=advance` (metric unchanged from iter-1, so technically "no improvement" → revert; if so just bump to a fresh commit and re-run, or accept that the metric is at ceiling and move to Stage 4).
-6. Decide: Stage 4 (Risk Gate) or Phase D (postmortem + scaffold-template fixes). See "Resume point — Stage 4" above.
+1. Read the top-of-file Status block and this section. If anything's stale, the underlying state is whatever `cargo test --workspace` + `autobuilder gate --project .` report.
+2. `cd /home/jsy/projects/autobuilder/autobuilder && PATH="$HOME/.cargo/bin:$PATH" cargo test --workspace` — full workspace green is the load-bearing test.
+3. `PATH="$HOME/.cargo/bin:$PATH" autobuilder/target/release/autobuilder gate --project /home/jsy/projects/autobuilder` — repo-level gate. If any receipt is stale (HEAD moved), regenerate with the producers + run `loop --iteration 0 --head-sha $(git rev-parse HEAD)`.
+4. CI: `gh run list -R j0yen/autobuilder --limit 3` — every commit since `12225fd` is green.
 
-If Stage 4: start with rollback-plan (smallest), then fix the audit-checks.sh defensive bug (unblocks the existing risk-gate.sh script), then layer in the others.
+Open work surfaced by the latest reviewer pass (none blocking):
+- 8 of 9 ACs in `tuner-metadata-scorer` still panic; iter past AC1 if you want to demonstrate Stage 3 at depth.
+- `metric-harness` schema validator is lighter than the full `autobuilder.metrics.v1` JSON Schema. Tighten if you see false greens.
 
 Source repos (do not re-clone, already present):
 - `/home/jsy/projects/autobuilder/autoresearch-macos/`
