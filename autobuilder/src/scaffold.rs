@@ -72,11 +72,24 @@ pub(crate) fn run(args: Args) -> Result<()> {
             template_root.display()
         ));
     }
-    if args.out.exists() {
-        return Err(anyhow!(
-            "--out {} already exists; pick a fresh path",
-            args.out.display()
-        ));
+    // Atomically claim --out by creating it ourselves. `create_dir` (NOT
+    // `create_dir_all`) is the only call that fails with AlreadyExists when
+    // a concurrent process plants a dir between our check and our use.
+    // No exists()-then-create_dir_all() race here.
+    match fs::create_dir(&args.out) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            return Err(anyhow!(
+                "--out {} already exists; pick a fresh path",
+                args.out.display()
+            ));
+        }
+        Err(e) => {
+            return Err(anyhow!(
+                "could not create --out {}: {e}",
+                args.out.display()
+            ));
+        }
     }
 
     let subs = [("{{intent_slug}}", slug.as_str()), ("{{target_kind}}", target_kind.as_str())];
