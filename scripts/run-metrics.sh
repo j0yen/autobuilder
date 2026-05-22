@@ -39,6 +39,11 @@ find_autobuilder_binary() {
 AUTOBUILDER_BIN="$(find_autobuilder_binary)"
 log "autobuilder binary: ${AUTOBUILDER_BIN:-NOT FOUND}"
 
+# Per-run scratch root for AC fixture tmp dirs; cleaned up at exit.
+AC_SCRATCH=$(mktemp -d)
+trap 'rm -rf "$AC_SCRATCH"' EXIT
+ac_tmpdir() { mktemp -d -p "$AC_SCRATCH"; }
+
 # AC checks. Each prints OK/FAIL to run.log; ac_results captures the count.
 declare -A AC_RESULT
 run_ac() {
@@ -56,11 +61,159 @@ ac_help() {
   [ -n "$AUTOBUILDER_BIN" ] && "$AUTOBUILDER_BIN" "$@" --help >/dev/null
 }
 
-run_ac AC1 ac_help rollback-plan
-run_ac AC2 ac_help vti-plan
-run_ac AC3 ac_help reviewer-agent prepare
-run_ac AC4 ac_help ci-checks
-run_ac AC5 ac_help gate
+# Each AC test materializes a tiny git fixture in a tmp dir, invokes the
+# subcommand, and asserts an observable contract from the AC's English —
+# not just that --help responded. Tmp dirs are cleaned up after each
+# test so the real repo's target/ is never touched.
+
+ac_setup_tmp_repo() {
+  local dir="$1"
+  mkdir -p "$dir"
+  (
+    cd "$dir"
+    git init -q
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m "init"
+  )
+}
+
+# AC1 — rollback-plan must write target/autobuilder/rollback.md AND the
+#       receipt with a digest; verdict pass when commits are revert-clean.
+ac1_rollback_writes_md() {
+  [ -n "$AUTOBUILDER_BIN" ] || return 1
+  local tmp; tmp=$(ac_tmpdir)
+  ac_setup_tmp_repo "$tmp"
+  (cd "$tmp" && echo hi > a.txt && git add -A && \
+    git -c user.email=t@t -c user.name=t commit -q -m "add a")
+  "$AUTOBUILDER_BIN" rollback-plan --project "$tmp" --base HEAD~1 >/dev/null 2>&1 || return 1
+  [ -s "$tmp/target/autobuilder/rollback.md" ] || return 1
+  [ -s "$tmp/target/autobuilder/receipts/rollback-plan.json" ] || return 1
+  local v; v=$(jq -r '.verdict' "$tmp/target/autobuilder/receipts/rollback-plan.json")
+  [ "$v" = "pass" ]
+}
+run_ac AC1 ac1_rollback_writes_md
+
+# AC2 — vti-plan must route a src/ change to the rust-source lane with
+#       confidence 1.0; an unrouted file must be reported with confidence 0.0.
+ac2_vti_plan_routes() {
+  [ -n "$AUTOBUILDER_BIN" ] || return 1
+  local tmp; tmp=$(ac_tmpdir)
+  ac_setup_tmp_repo "$tmp"
+  mkdir -p "$tmp/src" "$tmp/agent"
+  cat > "$tmp/agent/proof-lanes.toml" <<'EOF'
+[[lane]]
+id = "rust-source"
+globs = ["src/**/*.rs"]
+required_commands = ["cargo test"]
+EOF
+  # Commit the lanes FIRST so they don't appear in the diff range.
+  (cd "$tmp" && git add -A && \
+    git -c user.email=t@t -c user.name=t commit -q -m "lanes")
+  (cd "$tmp" && echo "fn main(){}" > src/main.rs && touch unrouted.txt && \
+    git add -A && git -c user.email=t@t -c user.name=t commit -q -m "add code")
+  # Should block because unrouted.txt has no lane; but the receipt must
+  # still record the rust-source route with confidence 1.0.
+  "$AUTOBUILDER_BIN" vti-plan --project "$tmp" --base HEAD~1 >/dev/null 2>&1 || true
+  local receipt="$tmp/target/autobuilder/receipts/vti-plan.json"
+  [ -s "$receipt" ] || return 1
+  # Use jq -e for numeric comparison so we don't trip on "1" vs "1.0" string form.
+  jq -e '
+    (.routes[] | select(.path == "src/main.rs") | .confidence == 1.0) and
+    (.routes[] | select(.path == "unrouted.txt") | .confidence == 0.0)
+  ' "$receipt" >/dev/null
+}
+run_ac AC2 ac2_vti_plan_routes
+
+# AC3 — reviewer-agent prepare must write a review-request packet that
+#       includes intent_card_sha256, commit_count, and changed_files.
+ac3_reviewer_prepare_packet() {
+  [ -n "$AUTOBUILDER_BIN" ] || return 1
+  local tmp; tmp=$(ac_tmpdir)
+  ac_setup_tmp_repo "$tmp"
+  mkdir -p "$tmp/agent"
+  echo '{"schema":"autobuilder.intent_card.v1","slug":"test"}' > "$tmp/agent/intent-card.json"
+  (cd "$tmp" && echo hello > README && git add -A && \
+    git -c user.email=t@t -c user.name=t commit -q -m "add readme")
+  "$AUTOBUILDER_BIN" reviewer-agent prepare --project "$tmp" --base HEAD~1 >/dev/null 2>&1 || return 1
+  local req="$tmp/target/autobuilder/review-request.json"
+  [ -s "$req" ] || return 1
+  local hash count files
+  hash=$(jq -r '.intent_card_sha256' "$req")
+  count=$(jq -r '.commit_count' "$req")
+  files=$(jq -r '.changed_files | length' "$req")
+  [[ "$hash" == sha256:* ]] && [ "$count" = "1" ] && [ "$files" -ge 1 ]
+}
+run_ac AC3 ac3_reviewer_prepare_packet
+
+# AC4 — ci-checks must refuse verdict=pass without ≥1 success run. Run
+#       it against a repo whose `origin` points at a repo with no runs
+#       and confirm it exits non-zero with verdict=block.
+ac4_ci_checks_blocks_when_empty() {
+  [ -n "$AUTOBUILDER_BIN" ] || return 1
+  local tmp; tmp=$(ac_tmpdir)
+  ac_setup_tmp_repo "$tmp"
+  # Use a public repo unlikely to have a workflow run for THIS commit's sha.
+  # The (random) sha from the empty-init commit above will yield zero runs.
+  if "$AUTOBUILDER_BIN" ci-checks --project "$tmp" --repo j0yen/autobuilder >/dev/null 2>&1; then
+    # Pass means the binary failed to block on empty — that's the bug we
+    # want to catch.
+    return 1
+  fi
+  local receipt="$tmp/target/autobuilder/receipts/ci-checks.json"
+  [ -s "$receipt" ] || return 1
+  local verdict runs
+  verdict=$(jq -r '.verdict' "$receipt")
+  runs=$(jq -r '.run_count' "$receipt")
+  [ "$verdict" = "block" ] && [ "$runs" = "0" ]
+}
+run_ac AC4 ac4_ci_checks_blocks_when_empty
+
+# AC5 — gate must walk all 7 receipts AND verify head_sha-binding on each
+#       (the counter-attack: a receipt with a mismatched head_sha must
+#       cause gate to block, not pass).
+ac5_gate_catches_head_sha_mismatch() {
+  [ -n "$AUTOBUILDER_BIN" ] || return 1
+  local tmp; tmp=$(ac_tmpdir)
+  ac_setup_tmp_repo "$tmp"
+  local head; head=$(cd "$tmp" && git rev-parse HEAD)
+  local recs="$tmp/target/autobuilder/receipts"
+  mkdir -p "$recs"
+
+  # Plant valid receipts for 6 of 7, with the WRONG head_sha on ci-checks.
+  local bad="deadbeef0000000000000000000000000000dead"
+  cat > "$recs/intake.json" <<EOF
+{"schema":"autobuilder.intent_card.v1"}
+EOF
+  cat > "$recs/vti-plan.json" <<EOF
+{"schema":"autobuilder.vti_plan_receipt.v1","head_sha":"$head","verdict":"pass"}
+EOF
+  cat > "$recs/$head.json" <<EOF
+{"schema":"autobuilder.iteration_receipt.v1","head_sha":"$head","verdict":"baseline"}
+EOF
+  cat > "$recs/risk-gate.json" <<EOF
+{"schema":"autobuilder.bad_rust_audit.v1","blocking_count":0,"advisory_count":0,"findings":[]}
+EOF
+  cat > "$recs/reviewer-agent.json" <<EOF
+{"schema":"autobuilder.reviewer_agent_receipt.v1","head_sha":"$head","decision":"pass"}
+EOF
+  cat > "$recs/rollback-plan.json" <<EOF
+{"schema":"autobuilder.rollback_plan_receipt.v1","head_sha":"$head","verdict":"pass"}
+EOF
+  # Deliberately wrong head_sha — gate must catch this.
+  cat > "$recs/ci-checks.json" <<EOF
+{"schema":"autobuilder.ci_checks_receipt.v1","head_sha":"$bad","verdict":"pass"}
+EOF
+
+  if "$AUTOBUILDER_BIN" gate --project "$tmp" >/dev/null 2>&1; then
+    return 1  # gate passed when it should have blocked
+  fi
+  local release="$tmp/target/autobuilder/release-receipt.json"
+  [ -s "$release" ] || return 1
+  local v; v=$(jq -r '.verdict' "$release")
+  [ "$v" = "block" ] || return 1
+  # The block_count should pin ci-checks specifically.
+  jq -e '.checks[] | select(.name == "ci-checks" and .pass == false and .head_sha_match == false)' "$release" >/dev/null
+}
+run_ac AC5 ac5_gate_catches_head_sha_mismatch
 
 # AC6: build + clippy strict + test (subshell so cwd is preserved)
 ac_build_pass() {
