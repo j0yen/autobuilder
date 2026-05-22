@@ -1,0 +1,142 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "/home/jsy/.claude/plans/autobuilder-prd-metric-harness.md",
+  "intent_slug": "autobuilder-metric-harness",
+  "root_motivation": "Bootstrap a load-bearing tool autobuilder needs: every iteration's unfakeable scalar must be emitted by a binary that was itself built under autobuilder's verified loop. The current shell-script fallback is a crack in the trust model — until the metric harness is owned by autobuilder, the loop's advance/revert decisions are only as trustworthy as a bash file with no tests.",
+  "user_persona": "The autobuilder skill (specifically the Stage 3 loop runner) and per-project run-metrics.sh authors. No human invokes this binary directly except for debugging.",
+  "unfakeable_metric": {
+    "name": "acceptance_tests_passing_count",
+    "lower_is_better": false,
+    "harness_command": "scripts/run-metrics.sh",
+    "target": 10
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "Given a project path, invoke <path>/scripts/run-metrics.sh. Return non-zero (exit 2) if missing or not executable, with stderr identifying the missing script.",
+      "test": "tests/acceptance_ac1.rs"
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "Capture project script's stdout AND stderr into <path>/target/autobuilder/run.log.",
+      "test": "tests/acceptance_ac2.rs"
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "description": "Parse <path>/target/autobuilder/metrics.json, validate against the autobuilder.metrics.v1 schema embedded as a build-time const. Return exit 3 with a JSON diagnostic on validation failure.",
+      "test": "tests/acceptance_ac3.rs"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "Emit a normalized autobuilder.metrics.v1 document to stdout AND overwrite <path>/target/autobuilder/metrics.json with the same content. Include head_sha (from --head-sha flag), iteration (from --iteration N), scalars, ac_passing_count, ac_total_count, audit.{blocking_count,advisory_count}, clippy_warning_count, captured_at (RFC3339), output_digest (sha256 of canonical JSON excluding output_digest itself).",
+      "test": "tests/acceptance_ac4.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Exit 0 only if project script exited 0 AND audit.blocking_count == 0 AND ac_results.length == ac_total_count. Otherwise exit 1 — but emit the metrics document either way so the loop can record the failed iteration.",
+      "test": "tests/acceptance_ac5.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Operate without modifying anything outside <path>/target/autobuilder/. Snapshot-hash the project before and after; only target/autobuilder/* paths may have changed.",
+      "test": "tests/acceptance_ac6.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Support --iteration N; pass through to metrics.iteration. Default null when absent.",
+      "test": "tests/acceptance_ac7.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "SHOULD",
+      "description": "Time-bound the project script with --timeout-seconds N (default 600). On timeout: kill the process, emit metrics with failure_kind=\"timeout\", exit 1.",
+      "test": "tests/acceptance_ac8.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "SHOULD",
+      "description": "When project script exits non-zero with no metrics.json produced, emit a synthetic metrics doc with failure_kind in {build_error, metric_emission_failure} so the loop can write a FailureCapsule.",
+      "test": "tests/acceptance_ac9.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "MAY",
+      "description": "Support --pretty for human-readable stdout; default is single-line canonical JSON. Verifiable by counting newlines in output.",
+      "test": "tests/acceptance_ac10.rs"
+    }
+  ],
+  "scope": [
+    "Invoke a project's scripts/run-metrics.sh once",
+    "Capture its stdout/stderr to run.log",
+    "Parse and validate its metrics.json",
+    "Normalize to autobuilder.metrics.v1",
+    "Emit to stdout and target/autobuilder/metrics.json",
+    "Compute output_digest over the normalized doc"
+  ],
+  "non_goals": [
+    "Edit scripts/run-metrics.sh or any project file outside target/autobuilder/",
+    "Invoke cargo directly",
+    "Make advance/revert decisions (loop runner's job)",
+    "Write EvidencePack receipts (loop runner's job)",
+    "Verify git state or invoke git commands (loop runner passes --head-sha)",
+    "Retry the project harness (one call, one result)",
+    "Network access of any kind",
+    "Remote project paths or URL inputs"
+  ],
+  "hard_constraints": {
+    "rust_edition": "2024",
+    "target_kind": "cli",
+    "deny_unsafe": true,
+    "max_deps": 6,
+    "msrv": "1.85",
+    "additional": {
+      "allowed_deps": "serde, serde_json, anyhow, clap, sha2, std",
+      "crate_location": "crates/metric-harness/ of the autobuilder workspace (initially scaffolded as a standalone project at /home/jsy/projects/autobuilder-metric-harness/ and vendored in once green)",
+      "canonical_json": "recursive key-sort + serde_json::to_vec, documented in README",
+      "head_sha_source": "--head-sha CLI flag; binary does not invoke git"
+    }
+  },
+  "five_whys_trace": [
+    {
+      "why": 1,
+      "q": "Why build a metric-harness binary as the first dogfood target rather than picking an external PRD?",
+      "a": "Because every subsequent autobuilder run will use it — making it both maximally dogfooded and load-bearing."
+    },
+    {
+      "why": 2,
+      "q": "Why make a load-bearing tool the first one autobuilder builds, rather than something throwaway?",
+      "a": "Because the trust model demands that the binary producing the unfakeable scalar be itself produced by autobuilder's verified loop. Until that's true, there's a shell-script-shaped crack at the foundation of the trust chain."
+    },
+    {
+      "why": 3,
+      "q": "Why does the trust chain matter so much — can't we just have well-tested shell scripts?",
+      "a": "Because the whole project's premise is 'every Rust artifact is generated under a falsifiable loop with structured receipts.' A shell-script harness in the receipt path means the most load-bearing measurement (the scalar that drives advance/revert) has the weakest validation. The system is only as honest as its weakest link."
+    }
+  ],
+  "ambiguities_resolved": [
+    {
+      "question": "Standalone crate vs subcommand of the autobuilder binary?",
+      "resolution": "Standalone crate at crates/metric-harness/. Initially scaffolded to /home/jsy/projects/autobuilder-metric-harness/ for the iterate loop, vendored into the workspace post-green."
+    },
+    {
+      "question": "How does the harness know head_sha?",
+      "resolution": "--head-sha CLI flag from caller. No git dependency in the harness; matches the non-goal 'does not verify git state.'"
+    },
+    {
+      "question": "Canonical JSON algorithm for output_digest?",
+      "resolution": "Recursive key-sort + serde_json::to_vec. Fits the tight-deps constraint. Documented in the binary's README."
+    },
+    {
+      "question": "Does the harness own clippy.json parsing?",
+      "resolution": "No — trust the project script's clippy_warning_count. The harness only validates shape, not the gate logic itself."
+    }
+  ],
+  "created_at": "2026-05-21T00:00:00Z"
+}
