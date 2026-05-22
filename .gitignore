@@ -1,0 +1,6 @@
+.DS_Store
+
+# Reference repos — cloned locally for autobuilder to read, tracked in their own remotes
+autoresearch-macos/
+jankurai/
+jeryu/

@@ -1,0 +1,334 @@
+# Autobuilder — A Skill for PRD-driven, Rigorously Validated Rust Code
+
+## Context
+
+The user has just walked through three repos that take opposite philosophical bets on "how do you trust agent-authored software":
+
+- **`miolini/autoresearch-macos`** (Karpathy's `autoresearch`, MPS fork): collapses the problem to a single editable file + one unfakeable metric (`val_bpb`) + a 9-step git advance-or-revert loop. No governance, no schema, no review. Trust = empirical metric + git history.
+- **`neverhuman/jankurai`**: a Rust audit CLI + a 0.9.0-versioned "standard" with ~40 HLT-* rule IDs, a 1485-line BAD_RUST.md anti-pattern catalog, proof-lane / owner-map / test-map TOML+JSON schemas, and a merge-witness JSON schema. Trust = repository-local evidence receipts.
+- **`neverhuman/jeryu`**: a Rust-first Git/CI control plane with six proof primitives — Supersedence, Impact, Evidence Capsule (`FailureCapsule`), Confidence Gate (VTI confidence ≥ 0.70), Risk Gate (`RiskGateDecision { Allow, Deny, Escalate }`), Proof Receipt — plus five separable proof-scoped crates (`cargo-witness`, `cargo-vrc`, `cargo-aer`, `witness-rt`, `arc-bench`). Trust = N required receipts on a gate, signed and digest-bound.
+
+The intent: **combine these into a single Claude Code skill called `autobuilder` that takes a PRD as input, drives an autonomous iterate-and-prove loop on a Rust codebase, and continually improves itself.**
+
+Goal: every Rust artifact emitted by `autobuilder` is (a) generated from a structured Intent Card derived from the PRD via 4/5-Whys, (b) iterated under a narrow falsifiable loop (autoresearch model), (c) accompanied by a `FailureCapsule`/`EvidencePack`-style receipt bundle (jeryu model), (d) gated by lifted jankurai rules and a risk gate before "ready to ship," and (e) used as input to a postmortem that updates the skill itself.
+
+## Architecture
+
+```
+PRD (file / pasted text)
+  └─> Stage 1: Intake & 5-Whys → intent-card.json
+       └─> Stage 2: Scaffold (cargo new + locked metric harness + lints)
+            └─> Stage 3: Iterate-and-Prove Loop (advance-or-revert)
+                 └─> Stage 4: Risk Gate (require 7 receipts)
+                      └─> Stage 5: Postmortem + Self-Evolve
+```
+
+### Stage 1 — PRD Intake (4/5-Whys)
+
+A structured interview that runs against the PRD until the root motivation is named. Emits an `intent-card.json` shaped after jeryu's `EvidencePack.intake` slot:
+
+```jsonc
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "path/to/prd.md",
+  "root_motivation": "...",          // surfaced by 5-Whys
+  "user_persona": "...",
+  "unfakeable_metric": {              // autoresearch's load-bearing concept
+    "name": "e.g. tests_pass_count",
+    "lower_is_better": false,
+    "harness_command": "scripts/run-metrics.sh"
+  },
+  "acceptance_criteria": [            // MUST/SHOULD/MAY, each testable
+    {"id": "AC1", "level": "MUST", "test": "..."},
+    ...
+  ],
+  "scope": ["..."],
+  "non_goals": ["..."],
+  "hard_constraints": {
+    "rust_edition": "2024",
+    "deny_unsafe": true,
+    "target": "cli|lib|service",
+    "max_deps": null
+  },
+  "five_whys_trace": [
+    {"why": 1, "q": "...", "a": "..."},
+    ... up to 5
+  ]
+}
+```
+
+Refuses to proceed if ambiguity remains after 5 Whys — surfaces what's missing and asks the user (jankurai's `kickoff` pattern).
+
+### Stage 2 — Scaffold (Locked Harness + Editable Surface)
+
+Generates a Rust project where the **harness is read-only** and the **agent edits only `src/`** (autoresearch's `prepare.py` / `train.py` separation, generalized):
+
+```
+<project>/
+├── Cargo.toml                 # locked workspace + deny.toml
+├── clippy.toml                # strict lints; deny warnings
+├── deny.toml                  # supply-chain (lifted from jeryu)
+├── rust-toolchain.toml        # pinned
+├── src/                       # ← agent edits ONLY this
+├── tests/                     # ← read-only integration + proptest
+│   ├── acceptance_*.rs        # one test per AC from intent-card
+│   ├── proptest_invariants.rs
+│   └── fuzz/                  # cargo-fuzz harness
+├── scripts/
+│   ├── run-metrics.sh         # ← read-only; emits metrics.json
+│   ├── audit.sh               # ← read-only; runs BAD_RUST scan
+│   └── risk-gate.sh           # ← read-only; checks 7 receipts
+├── agent/                     # lifted-from-jankurai layout
+│   ├── AUTOBUILDER_PROGRAM.md # the autoresearch-style program file
+│   ├── intent-card.json       # the source of truth
+│   ├── owner-map.json         # path → owner
+│   ├── test-map.json          # path → required validation command
+│   └── proof-lanes.toml       # change-class → required lanes
+├── target/autobuilder/        # receipts dir
+│   ├── receipts/<sha>.json    # one EvidencePack per iteration
+│   ├── failure-capsules/      # one FailureCapsule per crash
+│   ├── results.tsv            # autoresearch-style log
+│   └── postmortem.md          # final summary
+└── .github/workflows/         # CI mirror of the local gate
+```
+
+### Stage 3 — Iterate-and-Prove Loop (advance-or-revert)
+
+Generalizes autoresearch's 9-step loop. Emits an EvidencePack receipt every iteration.
+
+```
+LOOP UNTIL all-MUST-ACs-green AND risk-gate-passes OR budget-exhausted:
+  1. git state check; current branch is autobuilder/<intent-slug>
+  2. Edit src/ ONLY (an Autobuilder Edit Agent generates the diff)
+  3. git commit -m "iter-<n>: <hypothesis>"
+  4. scripts/run-metrics.sh > target/autobuilder/run.log 2>&1
+  5. jq < target/autobuilder/metrics.json → parse
+  6. If crash: tail -n 50 run.log; ≤3 fix attempts; else write FailureCapsule + status=crash
+  7. Append row to results.tsv: <sha> <quality_score> <ac_passing> <status> <description>
+  8. Advance if: all hard gates pass AND quality_score improved AND no MUST-AC regression
+     Else: git reset --hard HEAD~1; status=discard
+  9. Emit EvidencePack JSON for the iteration
+```
+
+Hard gates (must all pass before any advance):
+- `cargo check --workspace`
+- `cargo clippy --workspace -- -D warnings`
+- `cargo test --workspace`
+- `cargo deny check`
+- `cargo +nightly miri test` (if `--allow-unsafe`)
+- BAD_RUST audit scan (lifted catalog, grep + clippy-restriction lints)
+- proof-lanes routing: every changed path resolves to ≥1 lane, all lanes green
+
+Quality score (soft, drives advance/revert tiebreak):
+```
+score = weighted_sum(
+  ac_passing_count,          # weight 10
+  test_coverage_pct,          # weight 3
+  proptest_density,           # weight 2
+  doc_coverage_pct,           # weight 1
+  -audit_findings_count,      # weight 2
+  -clippy_warning_count       # weight 1
+)
+```
+
+### Stage 4 — Risk Gate (jeryu's 7 receipts)
+
+Before declaring the project "ready," require all 7 receipts present and digest-bound to `HEAD`:
+
+| Receipt | Source | Pass condition |
+|---|---|---|
+| `intake` | Stage 1 | `intent-card.json` validates against schema, all MUST-ACs declared |
+| `vti-plan` | Stage 2/3 | every changed path routed via `proof-lanes.toml`; confidence ≥ 0.70 |
+| `proof-receipt` | Stage 3 | test/proptest/fuzz/miri/deny green on `HEAD` |
+| `risk-gate` | Stage 3 | BAD_RUST audit clean (or only `advisory`-severity findings with waivers) |
+| `reviewer-agent` | new sub-agent | independent Claude review of `HEAD~N..HEAD` against intent-card; decision ∈ `{pass, concern, block}` |
+| `rollback-plan` | Stage 2 | every commit is `git revert`-clean; rollback steps written to `target/autobuilder/rollback.md` |
+| `ci-checks` | Stage 2 | `.github/workflows/` green on a fresh clone of the worktree |
+
+Missing receipts → block + machine-readable diagnostic. No self-approval (jeryu rule 3).
+
+### Stage 5 — Postmortem & Self-Evolve
+
+After each completed PRD run:
+- `target/autobuilder/postmortem.md`: what worked, where the loop got stuck, what anti-pattern recurred, what new lint should be added, what scaffold tweak would have prevented N retries.
+- A run-level `evolution-proposal.json` queued in `~/.claude/skills/autobuilder/proposals/`.
+- The `/autobuilder --evolve` mode: aggregates proposals across the last K runs, surfaces a diff against `SKILL.md` / `rules/bad-rust.md` / `templates/scaffold/` for **user review**. Never self-applies. (This is the "improving the toolset" half of the request; making self-modification gated keeps the meta-loop honest.)
+
+## Skill Layout (Claude Code skill)
+
+```
+~/.claude/skills/autobuilder/
+├── SKILL.md                          # ~5KB — entry point, when-to-invoke, the 5-stage pipeline summary
+├── prompts/
+│   ├── prd-intake-5whys.md            # 4/5-Whys interview script
+│   ├── reviewer-agent.md              # independent diff reviewer
+│   ├── edit-agent.md                  # iteration coder prompt
+│   ├── postmortem-writer.md
+│   └── evolve.md                      # self-improvement aggregator
+├── templates/
+│   ├── scaffold/                      # full project skeleton (Cargo.toml, clippy, deny, harness, tests/, scripts/, agent/, .github/)
+│   └── AUTOBUILDER_PROGRAM.md.tmpl    # autoresearch-program-md analogue, instantiated per project
+├── rules/
+│   ├── bad-rust.md                    # curated subset lifted from jankurai/docs/BAD_RUST.md
+│   ├── hlt-rules.toml                 # HLT-* IDs we adopt (HLT-001, -002, -004, -010, -021, -029...)
+│   └── audit-checks.sh                # grep + clippy-restriction implementations
+├── schemas/
+│   ├── intent-card.schema.json
+│   ├── evidence-pack.schema.json      # lifted from jeryu/.jeryu/autonomy/schemas/
+│   ├── failure-capsule.schema.json    # lifted from jeryu/src/capsule.rs (translated)
+│   ├── proof-receipt.schema.json      # lifted from jankurai/schemas/proofmark-receipt.schema.json
+│   └── merge-witness.schema.json      # lifted from jankurai/schemas/merge-witness.schema.json
+├── scripts/
+│   ├── intake.sh                      # runs 5-Whys interview, emits intent-card.json
+│   ├── scaffold.sh                    # cargo-new + templating
+│   ├── experiment-loop.sh             # the 9-step LOOP
+│   ├── metric-harness.sh              # delegates to project's scripts/run-metrics.sh, normalizes output
+│   ├── risk-gate.sh                   # checks 7 receipts
+│   ├── postmortem.sh
+│   └── evolve.sh                      # aggregates proposals
+└── proposals/                         # accumulated evolution proposals (gated, not auto-applied)
+```
+
+## What I Vendor vs. Reference
+
+| Asset | Source | Action | Reason |
+|---|---|---|---|
+| `BAD_RUST.md` catalog | jankurai/docs/BAD_RUST.md | **Vendor curated subset** (~300 lines of the 1485) | Stable, prose, immediately useful; full version is too much for context |
+| HLT-* rule table | jankurai/agent/JANKURAI_STANDARD.md | Vendor as `rules/hlt-rules.toml` | Stable IDs; we pick the ~15 most-relevant |
+| `proof-lanes.toml` schema | jankurai/agent/proof-lanes.toml | Vendor template | Reusable structure |
+| `merge-witness.schema.json` | jankurai/schemas/merge-witness.schema.json | Vendor verbatim | Concrete JSON schema for the "are we ready" decision |
+| `FailureCapsule` struct | jeryu/src/capsule.rs | Translate to JSON schema, vendor | Receipt format for crashes |
+| `EvidencePack` schema | jeryu/.jeryu/autonomy/schemas/evidence-pack.schema.json | Vendor verbatim | Receipt format for iterations |
+| `release.policy.toml` 7-receipt pattern | jeryu/release.policy.toml + src/release/gate.rs | Adopt as `scripts/risk-gate.sh` logic | The gate model itself |
+| `program.md` structure | autoresearch/program.md | Vendor as `templates/AUTOBUILDER_PROGRAM.md.tmpl` | Per-project instructions for the iterating agent |
+| `results.tsv` schema | autoresearch/program.md | Adopt verbatim, add columns | Concrete per-iteration log |
+| 9-step LOOP | autoresearch/program.md | Adopt nearly verbatim, generalize | The core trust mechanic |
+| `jankurai-proofbind` crate | jankurai/crates/jankurai-proofbind | Reference by path (don't vendor) | Live crate, would age in a vendor copy |
+| `cargo-aer` / `cargo-vrc` / `cargo-witness` | jeryu/crates/ | Reference by path (don't vendor) | Live crates; optional invocations |
+
+## Reused Existing Skills
+
+The skill does NOT reinvent; it calls into existing skills/tooling where available:
+- `/loop` (interval execution) — for long-running experiment cadence
+- `/verify` — for the final end-to-end app-run verification step in Stage 4
+- `/code-review` — for the `reviewer-agent` receipt
+- `/init` — for cargo-new scaffolding shells out, but autobuilder owns its own template path
+
+## Tools to Build (concrete, during implementation)
+
+1. **`intake.sh` + `prd-intake-5whys.md`** — Claude-driven structured interview, JSON output.
+2. **`scaffold.sh`** — templated `cargo new` + harness installation.
+3. **`scripts/run-metrics.sh`** (in each scaffolded project) — single-script orchestrator emitting one `metrics.json`.
+4. **`audit-checks.sh`** — BAD_RUST grep + clippy-restriction lint runner. Translates the prose catalog into runnable checks where mechanizable (e.g., `Box::leak` grep, `unsafe impl Send` grep, `mem::transmute` grep, `unwrap` density), advisory-only where not (e.g., "API design honesty").
+5. **`experiment-loop.sh`** — the 9-step LOOP runner. Calls `metric-harness.sh`, makes advance/revert decisions, writes receipts.
+6. **`risk-gate.sh`** — checks 7 receipt files exist + are digest-bound to `HEAD`.
+7. **`reviewer-agent` prompt** — independent subagent that reviews `HEAD~N..HEAD` diff against `intent-card.json` and decides pass/concern/block.
+8. **`postmortem.sh`** — aggregates results.tsv + FailureCapsules + EvidencePacks into a markdown summary and an evolution proposal.
+9. **`evolve.sh`** — gated self-improvement: never auto-modifies SKILL.md; surfaces a diff for user approval.
+
+## Verification (How to Test the Built Skill)
+
+Smoke test (single PRD, single platform):
+- PRD: "A CLI that reverses stdin and exits 0; rejects binary input with exit 2."
+- Expect: scaffold compiles, MUST-ACs all green after ≤5 iterations, all 7 receipts produced, postmortem emitted.
+
+Adversarial tests:
+- **Under-specified PRD** ("make a tool that helps with files") — expect 5-Whys to refuse to proceed and surface ambiguity.
+- **Conflicting PRD** ("must be zero-dep AND must use tokio") — expect intake to flag the conflict.
+- **Untestable PRD** ("must feel snappy") — expect intake to demand a quantifiable proxy or refuse.
+
+Robustness tests:
+- Inject a deliberate failure into `scripts/run-metrics.sh` mid-run → expect FailureCapsule, ≤3 retries, then clean halt with status=crash.
+- Inject a metric regression on an "improvement" iteration → expect git reset + status=discard.
+- Skip the risk gate (mock missing receipt) → expect Stage 4 to refuse "ready" with machine-readable diagnostic.
+
+Scale tests (after smoke):
+- 3 PRDs of escalating complexity: rev-cli → in-memory KV store → tiny static-file HTTP server. Measure iterations-to-green, advance/revert ratio, # of human interventions (should be 0 if the gate model holds).
+
+Self-evolution test:
+- Run autobuilder against a deliberate PRD that exposes a gap in the BAD_RUST catalog (e.g., misuse of `tokio::spawn` returning unawaited handles). Expect postmortem to identify the new rule and queue an evolution proposal. Expect `/autobuilder --evolve` to surface it for review without auto-applying.
+
+## Resolved Decisions (from 2026-05-21 clarification round)
+
+The user answered the four open questions before switching Claude plans. Lock these in:
+
+1. **Skill shape** — **Skill + companion Rust binary.** Build both: a `~/.claude/skills/autobuilder/` Claude Code skill that orchestrates Claude subagents, AND a companion Rust binary at `/Users/jsy/projects/autobuilder/autobuilder/` that owns the metric harness, receipt writing, risk gate, proof-lane routing, and the experiment-loop runner. The skill shells out to the binary; the binary is itself dogfooded under autobuilder's discipline (see decision #4). Reused crates from jeryu/jankurai are referenced by path, not vendored (per the vendor-vs-reference table).
+
+2. **Target scope** — **CLIs + library crates.** Stage-2 scaffold must support both `--target cli` and `--target lib`. For libraries, add: cargo-semver-checks integration into the metric harness, docs-coverage check (`cargo doc --no-deps` + `RUSTDOCFLAGS="-D missing-docs"`), public-API surface diff vs. `HEAD~1` (a `cargo public-api` invocation). Web service / WASM / embedded explicitly **out of scope for v1** — defer to a `--target service` mode in v2 once v1 is shipping.
+
+3. **Autonomy model** — **Hybrid: human checkpoint only on AC additions/changes.** The iterate-and-prove loop runs fully autonomously (advance/revert with no human input). The risk gate runs fully autonomously when all 7 receipts can be produced. The human is consulted ONLY when:
+   - The agent wants to add a new acceptance criterion not in the intent-card
+   - The agent wants to relax / waive a MUST acceptance criterion
+   - The agent wants to widen `hard_constraints` (e.g., allow unsafe when intent-card said no)
+   - An evolution proposal would modify the skill itself (Stage 5 is always gated)
+   Implementation: an `intent_card_amendment_request.json` written to a known path triggers a halt + user prompt. Without an amendment, the loop ships when receipts green.
+
+4. **First PRD** — **Autobuilder itself, meta.** Once the skill scaffolding exists (SKILL.md + minimum prompts + scaffold templates + a stub Rust binary), write a PRD for one of autobuilder's own Rust sub-tools and have autobuilder build it. Candidate first sub-tool: **the metric harness binary** (`autobuilder-metric-harness`) — it has a clean unfakeable contract (input: project path; output: a single normalized `metrics.json`), is small enough to fit in the v1 falsifiable loop, and once it exists, every subsequent autobuilder run uses it. This is maximally dogfooded and gives us a real signal whether the loop works before we throw external PRDs at it.
+
+## Build Order (for resume)
+
+When work resumes:
+
+**Phase A — Skill scaffold (no Rust yet)**
+1. Create `~/.claude/skills/autobuilder/SKILL.md` (frontmatter + entry-point logic)
+2. Write `prompts/prd-intake-5whys.md` (the structured interview)
+3. Write `schemas/intent-card.schema.json`
+4. Vendor `rules/bad-rust.md` curated subset from `jankurai/docs/BAD_RUST.md` (~300 lines, selected for: borrow-checker bypasses, unsafe misuse, panic discipline, error swallowing, secrets, false thread-safety, performance traps, testing dishonesty)
+5. Vendor `schemas/evidence-pack.schema.json` and `schemas/merge-witness.schema.json` from the source repos
+6. Translate `FailureCapsule` (jeryu/src/capsule.rs:14) to `schemas/failure-capsule.schema.json`
+
+**Phase B — Rust binary stub**
+7. `cargo new --bin /Users/jsy/projects/autobuilder/autobuilder/` (workspace-ready)
+8. Stub binary with subcommands: `intake`, `scaffold`, `loop`, `gate`, `postmortem`, `evolve` — each `unimplemented!()` initially
+9. Add `Cargo.toml` workspace pointing at `crates/` for future sub-crates
+10. Add `clippy.toml`, `deny.toml` (lifted from jeryu), `rust-toolchain.toml`
+
+**Phase C — First meta-PRD: the metric harness**
+11. Write `~/.claude/plans/autobuilder-prd-metric-harness.md` — a real PRD for `autobuilder-metric-harness` binary
+12. Run autobuilder against it (Stage 1 5-Whys → Stage 2 scaffold → Stage 3 loop → Stage 4 gate)
+13. Capture postmortem; this is the v1 acceptance test
+
+**Phase D — Backfill**
+14. Once the metric harness exists and works, use it for autobuilder's own loop (the binary now uses its own dogfooded harness)
+15. Write the remaining tools (`audit-checks.sh`, `risk-gate.sh`, `experiment-loop.sh`) under autobuilder's discipline
+16. Iterate `BAD_RUST.md` rules selection based on Phase C postmortem learnings
+
+## Resume Instructions (for the next Claude session)
+
+The next session should:
+1. Read this plan file in full
+2. Read the three source repos under `/Users/jsy/projects/autobuilder/{jankurai,jeryu,autoresearch-macos}/` for the artifacts to vendor/reference (specific files listed in the "What I Vendor vs. Reference" table above)
+3. Confirm with the user that the resolved decisions still hold (they may have evolved between sessions)
+4. Begin **Phase A** of the Build Order
+5. Use `ExitPlanMode` when ready to begin actual file creation, since plan mode is currently active
+
+Reference files the next session should read first (in order):
+- `/Users/jsy/projects/autobuilder/autoresearch-macos/program.md` (the LOOP protocol, verbatim)
+- `/Users/jsy/projects/autobuilder/autoresearch-macos/prepare.py` lines 40-56 + the `evaluate_bpb` signature (the locked-harness contract)
+- `/Users/jsy/projects/autobuilder/jankurai/docs/BAD_RUST.md` (the anti-pattern catalog source)
+- `/Users/jsy/projects/autobuilder/jankurai/agent/JANKURAI_STANDARD.md` lines 165-212 (the HLT-* rule table)
+- `/Users/jsy/projects/autobuilder/jankurai/agent/proof-lanes.toml` (template format)
+- `/Users/jsy/projects/autobuilder/jankurai/schemas/merge-witness.schema.json` (verbatim vendor)
+- `/Users/jsy/projects/autobuilder/jankurai/schemas/proofmark-receipt.schema.json` (verbatim vendor)
+- `/Users/jsy/projects/autobuilder/jeryu/.jeryu/autonomy/schemas/evidence-pack.schema.json` (verbatim vendor)
+- `/Users/jsy/projects/autobuilder/jeryu/.jeryu/autonomy/schemas/agent-approval-receipt.schema.json` (verbatim vendor)
+- `/Users/jsy/projects/autobuilder/jeryu/src/capsule.rs` lines 14+ (`FailureCapsule` struct — translate to JSON schema)
+- `/Users/jsy/projects/autobuilder/jeryu/release.policy.toml` + `/Users/jsy/projects/autobuilder/jeryu/src/release/gate.rs` lines 62-72 (the 7-receipt gate model)
+- `/Users/jsy/projects/autobuilder/jeryu/proof-lanes.toml` lines 1-60 (consumer pattern in `src/agent_surface_index.rs:62-100`)
+- `/Users/jsy/projects/autobuilder/jeryu/src/test_intel/planner.rs` + `subsystem_glob.rs` (VTI confidence-scoring algorithm — for reference, not vendor)
+
+## Status at Save Point
+
+- **Plan mode active**: no files created yet outside this plan file.
+- **Phase 1 (Explore)**: COMPLETE. Three parallel Explore agents confirmed the reusable artifacts in each source repo. Findings are summarized in the "What I Vendor vs. Reference" table.
+- **Phase 2 (Plan agents)**: SKIPPED. The user's request was design-synthesis-from-existing-concepts, not a novel architecture problem; the plan was drafted directly from Phase 1 findings + the three repos' explicit primitives. Can be revisited if the user wants alternative architectures (e.g., a pure-autoresearch variant with no risk gate).
+- **Phase 3 (Review + AskUserQuestion)**: COMPLETE. Four clarifying questions answered; decisions locked in above.
+- **Phase 4 (Final Plan)**: IN PROGRESS. This file IS the final plan; the resolved-decisions section + build order above complete it.
+- **Phase 5 (ExitPlanMode)**: NOT CALLED. User interrupted to switch Claude plans before approval. The next session should re-read this file, confirm decisions still hold, and call `ExitPlanMode` before implementation.
+
+Pre-built artifacts already present (do not redo):
+- `/Users/jsy/projects/autobuilder/{jankurai,jeryu,autoresearch-macos}/` — all three source repos cloned and inspected
+- `/Users/jsy/projects/autobuilder/autobuilder/` — does NOT yet exist; this is where the Rust binary will go in Phase B
+- `~/.claude/skills/autobuilder/` — does NOT yet exist; this is where the skill will go in Phase A
+
+No code, no commits, no skill files have been created. Resume from Phase A.
