@@ -8,7 +8,7 @@ edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 authors = ["Joey Yen <jyen.tech@gmail.com>"]
-repository = "https://github.com/joeyen-atscale/autobuilder"
+repository = "https://github.com/j0yen/autobuilder"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
