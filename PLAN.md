@@ -319,16 +319,80 @@ Reference files the next session should read first (in order):
 
 ## Status at Save Point
 
-- **Plan mode active**: no files created yet outside this plan file.
-- **Phase 1 (Explore)**: COMPLETE. Three parallel Explore agents confirmed the reusable artifacts in each source repo. Findings are summarized in the "What I Vendor vs. Reference" table.
-- **Phase 2 (Plan agents)**: SKIPPED. The user's request was design-synthesis-from-existing-concepts, not a novel architecture problem; the plan was drafted directly from Phase 1 findings + the three repos' explicit primitives. Can be revisited if the user wants alternative architectures (e.g., a pure-autoresearch variant with no risk gate).
-- **Phase 3 (Review + AskUserQuestion)**: COMPLETE. Four clarifying questions answered; decisions locked in above.
-- **Phase 4 (Final Plan)**: IN PROGRESS. This file IS the final plan; the resolved-decisions section + build order above complete it.
-- **Phase 5 (ExitPlanMode)**: NOT CALLED. User interrupted to switch Claude plans before approval. The next session should re-read this file, confirm decisions still hold, and call `ExitPlanMode` before implementation.
+**Last updated: 2026-05-21 (session 2). Paths corrected from macOS to Linux: this machine is Linux at `/home/jsy/` not `/Users/jsy/`.**
 
-Pre-built artifacts already present (do not redo):
-- `/Users/jsy/projects/autobuilder/{jankurai,jeryu,autoresearch-macos}/` — all three source repos cloned and inspected
-- `/Users/jsy/projects/autobuilder/autobuilder/` — does NOT yet exist; this is where the Rust binary will go in Phase B
-- `~/.claude/skills/autobuilder/` — does NOT yet exist; this is where the skill will go in Phase A
+### Phase A — Skill scaffold: COMPLETE
 
-No code, no commits, no skill files have been created. Resume from Phase A.
+38 files under `/home/jsy/.claude/skills/autobuilder/`:
+- `SKILL.md` — entry point (registers the skill with Claude Code).
+- `prompts/` — 5 files: `prd-intake-5whys.md`, `edit-agent.md`, `reviewer-agent.md`, `postmortem-writer.md`, `evolve.md`.
+- `rules/` — `bad-rust.md` (curated subset, ~270 lines), `hlt-rules.toml` (15 adopted IDs), `audit-checks.sh` (22 mechanizable detectors; bash-syntax-clean).
+- `schemas/` — `intent-card.schema.json` (authored), `failure-capsule.schema.json` (translated from `jeryu/src/capsule.rs:14`, GitLab-CI envs generalized), plus 3 vendored verbatim: `evidence-pack`, `merge-witness`, `proof-receipt`.
+- `scripts/` — 7 orchestration shims (`intake`, `scaffold`, `experiment-loop`, `metric-harness`, `risk-gate`, `postmortem`, `evolve`); each defers to the companion Rust binary when present, falls back to minimum-viable shell behavior otherwise.
+- `templates/scaffold/` — full project skeleton (`Cargo.toml` with strict `[lints]`, `clippy.toml`, `deny.toml`, `rust-toolchain.toml`, `src/`, `tests/`, `scripts/run-metrics.sh + audit.sh + risk-gate.sh`, `agent/owner-map.json + test-map.json + proof-lanes.toml`, `.github/workflows/ci.yml` with SHA-pinned actions).
+- `templates/AUTOBUILDER_PROGRAM.md.tmpl` — per-project inner-loop instructions.
+
+### Phase B — Rust binary stub: COMPLETE
+
+13 files under `/home/jsy/projects/autobuilder/autobuilder/`:
+- Workspace-ready `Cargo.toml` with `[workspace.lints]` mirroring scaffold rules.
+- `src/main.rs` — clap dispatch to 7 subcommand modules.
+- 7 module stubs (`intake`, `scaffold`, `loop_runner`, `metric_harness`, `gate`, `postmortem`, `evolve`), each clap-typed with `unimplemented!()` body.
+- `clippy.toml`, `deny.toml`, `rust-toolchain.toml` (pinned 1.85.0), `.gitignore`.
+
+**Toolchain installed**: `rustup` at `~/.cargo/bin/`, Rust 1.85.0 auto-installed via `rust-toolchain.toml` on first invocation. `cargo check` passes clean from `/home/jsy/projects/autobuilder/autobuilder/`. PATH note: add `~/.cargo/bin` to PATH (rustup-init was invoked with `--no-modify-path`).
+
+Visibility was tightened on the subcommand modules to `pub(crate)` to satisfy the `unreachable_pub = "warn"` workspace lint — module structs and `run()` fns are `pub(crate)`, fields are `pub` (which narrows to `pub(crate)` inside a `pub(crate)` struct).
+
+### Phase C — First meta-PRD (`autobuilder-metric-harness`): IN PROGRESS
+
+- **PRD written**: `/home/jsy/.claude/plans/autobuilder-prd-metric-harness.md`. 10 ACs (6 MUST, 3 SHOULD, 1 MAY). Tight constraints: deny_unsafe, max 6 deps, no git or network subprocess. Unfakeable metric: `acceptance_tests_passing_count`, target 10.
+- **Stage 1 (Intake) COMPLETE.** Four open questions resolved with the user via AskUserQuestion:
+  1. **Root motivation**: bootstrap a load-bearing tool — close the shell-script crack in the trust model. Until autobuilder owns its own metric harness, the loop's advance/revert decisions are only as trustworthy as a bash file with no tests.
+  2. **Crate layout**: standalone crate at `crates/metric-harness/` (initially scaffolded standalone at `/home/jsy/projects/autobuilder-metric-harness/` and vendored into the workspace post-green).
+  3. **`head_sha` source**: `--head-sha` CLI flag from caller; binary has no git dependency.
+  4. **Canonical JSON for `output_digest`**: recursive key-sort + `serde_json::to_vec` (matches the tight-deps constraint; documented in the binary's README).
+- **Intent card emitted**: `~/.claude/skills/autobuilder/proposals/intake-autobuilder-metric-harness-20260521T000000Z.json`. Structural validation passes (all required keys present, AC IDs match pattern, `intent_slug` valid, 6 MUST-ACs declared, schema field correct).
+- **Stage 2 (Scaffold) COMPLETE.** Path 1 chosen (shell-fallback scaffold + hand-authored acceptance tests). Project at `/home/jsy/projects/autobuilder-metric-harness/` with baseline commit `fc3fd57` on `main`, plus `autobuilder/autobuilder-metric-harness` branch ready for the Stage 3 loop. 17 acceptance test functions (named `acceptance_ac<N>_*`) across 10 `tests/acceptance_ac<N>.rs` files. Cargo deps locked: anyhow, clap, serde, serde_json, sha2 (5 of 6 allowed). Dev-deps: proptest, tempfile.
+- **Baseline run-metrics.sh output**: `ac_passing_count=0, ac_total_count=10, audit.blocking_count=0, advisory_count=0, clippy_warning_count=0` (see `target/autobuilder/metrics.json`). Stage 3's gradient is to drive `ac_passing_count` from 0 → 10 by editing `src/main.rs` only.
+- **Scaffold-time fixes applied to the project's `scripts/run-metrics.sh`** (the template at `~/.claude/skills/autobuilder/templates/scaffold/scripts/run-metrics.sh` has the same bugs and should be patched during Phase D postmortem):
+  - `cargo check` and `cargo test` lines now end with `|| true` so a failing gate doesn't `set -e` the script before the emit step. Mirrors AC5's invariant ("emit metrics even when exit 1") in the bash bootstrap.
+  - `BLOCKING`/`ADVISORY` are defaulted with `${VAR:-0}` after the jq parse, so an empty `target/autobuilder/audit.json` (which happens when `audit-checks.sh` itself aborts before emitting) doesn't crash the final `--argjson` call.
+
+### Resume point — Stage 3 (Iterate-and-Prove Loop)
+
+- Cwd: `/home/jsy/projects/autobuilder-metric-harness/`.
+- Branch: `autobuilder/autobuilder-metric-harness` (parent: `main@fc3fd57`).
+- Only `src/main.rs` is editable. Everything else (`scripts/`, `tests/`, `Cargo.toml`, `clippy.toml`, `deny.toml`, `rust-toolchain.toml`, `agent/`, `.github/`) is read-only per `agent/owner-map.json`.
+- Edit-agent contract for the binary's CLI (locked by the test stubs):
+  - `autobuilder-metric-harness <project_path> [--head-sha <sha>] [--iteration <n>] [--timeout-seconds <n>] [--pretty]`
+  - Exit codes: 0 clean, 1 partial (still emits metrics), 2 missing/non-executable run-metrics.sh, 3 schema validation failure on metrics.json.
+- Iter-0 metric: 0/10. Target: 10/10 plus all 7 receipts on the Stage 4 risk gate.
+- Stage 3 entry has two viable paths, blocked on the SAME fork as before — `autobuilder loop_runner` is still `unimplemented!()` in the companion binary. Either:
+  1. **Drive Stage 3 by hand** (recommended at pause): a Claude session reads `agent/intent-card.json` + the 10 failing tests, edits `src/main.rs`, runs `bash scripts/run-metrics.sh`, parses `target/autobuilder/metrics.json`, advances/reverts manually, repeats. Slow but lets us learn the loop's shape before automating it.
+  2. **Implement `autobuilder loop` first** in `/home/jsy/projects/autobuilder/autobuilder/src/loop_runner.rs`: ~200 lines (git state check, cmd dispatch, results.tsv append, advance/revert decisions). Cleaner but another Rust side-quest before any meta-PRD progress.
+
+### Known issues to fold into the Phase D postmortem
+
+1. **`templates/scaffold/scripts/run-metrics.sh`** has the same `set -e`-aborts-before-emit bug fixed in this scaffolded copy. Template needs the same `|| true` + `${BLOCKING:-0}` patches.
+2. **`rules/audit-checks.sh`** itself aborts mid-run (exit 1, empty stdout) on a fresh scaffold — likely a `check_seven_receipts_present` or similar pre-condition that's not met at baseline. Should be defensive: emit valid `{findings:[], blocking_count:0, advisory_count:0}` even when no checks pass.
+3. The clippy `print_stderr = "warn"` denial means the template `src/main.rs` stub (which uses `eprintln!`) cannot pass `clippy -- -D warnings`. Either relax the lint for `src/main.rs` or have the scaffold emit a different stub.
+4. The bash `AC_PASSING` grep counts function-level passes; `AC_TOTAL` counts files. They're not directly comparable — fine as a coarse gradient, but the Rust harness must normalize this.
+
+### How to resume
+
+1. Read this `PLAN.md` in full (especially the resolved-decisions and Phase C blocks).
+2. Verify Phase A files exist: `ls /home/jsy/.claude/skills/autobuilder/`.
+3. Verify Phase B compiles: `cd /home/jsy/projects/autobuilder/autobuilder && cargo check` (toolchain auto-installs if missing).
+4. Verify scaffolded project compiles + tests run + baseline metrics emit:
+   - `cd /home/jsy/projects/autobuilder-metric-harness && cargo test --no-fail-fast` → expect 17 failures + 1 proptest placeholder pass
+   - `bash scripts/run-metrics.sh && jq . target/autobuilder/metrics.json` → expect `ac_passing_count: 0, ac_total_count: 10`
+5. Read the PRD: `/home/jsy/.claude/plans/autobuilder-prd-metric-harness.md`.
+6. Read the intent-card: `~/.claude/skills/autobuilder/proposals/intake-autobuilder-metric-harness-20260521T000000Z.json`.
+7. Confirm with the user which Stage-3 path to take (drive by hand, OR implement `autobuilder loop` first).
+8. Begin Stage 3.
+
+Source repos (do not re-clone, already present):
+- `/home/jsy/projects/autobuilder/autoresearch-macos/`
+- `/home/jsy/projects/autobuilder/jankurai/`
+- `/home/jsy/projects/autobuilder/jeryu/`
