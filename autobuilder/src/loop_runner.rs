@@ -224,18 +224,35 @@ fn read_previous_metric(results_tsv: &Path) -> Result<Option<f64>> {
         return Ok(None);
     }
     let content = fs::read_to_string(results_tsv)?;
-    let last_data_line = content
-        .lines()
-        .filter(|l| !l.is_empty() && !l.starts_with("commit\t"))
-        .filter(|l| !is_crash_row(l))
+    let mut lines = content.lines();
+    let Some(header) = lines.next() else {
+        return Ok(None);
+    };
+    // Bind column lookups to the header row so the schema can grow without
+    // silently breaking the crash filter (`status` column index drifts).
+    // `append_results_row` writes this header — keep them in sync.
+    let cols_in_header: Vec<&str> = header.split('\t').collect();
+    let metric_idx = cols_in_header
+        .iter()
+        .position(|c| *c == "metric")
+        .ok_or_else(|| anyhow!("results.tsv header missing `metric` column"))?;
+    let status_idx = cols_in_header
+        .iter()
+        .position(|c| *c == "status")
+        .ok_or_else(|| anyhow!("results.tsv header missing `status` column"))?;
+
+    let last_data_line = lines
+        .filter(|l| !l.is_empty())
+        .filter(|l| !is_crash_row(l, status_idx))
         .next_back();
     let Some(line) = last_data_line else {
         return Ok(None);
     };
-    let mut cols = line.split('\t');
-    let _commit = cols.next();
-    let metric_str = cols.next().ok_or_else(|| {
-        anyhow!("results.tsv last row malformed: no metric column in `{line}`")
+    let cols: Vec<&str> = line.split('\t').collect();
+    let metric_str = cols.get(metric_idx).ok_or_else(|| {
+        anyhow!(
+            "results.tsv row has fewer columns than header (need {metric_idx}+1): `{line}`"
+        )
     })?;
     let metric: f64 = metric_str
         .parse()
@@ -243,9 +260,8 @@ fn read_previous_metric(results_tsv: &Path) -> Result<Option<f64>> {
     Ok(Some(metric))
 }
 
-fn is_crash_row(line: &str) -> bool {
-    // Schema: commit \t metric \t iteration \t ac_pass \t ac_total \t status \t description
-    line.split('\t').nth(5) == Some("crash")
+fn is_crash_row(line: &str, status_idx: usize) -> bool {
+    line.split('\t').nth(status_idx) == Some("crash")
 }
 
 struct VerdictInputs {

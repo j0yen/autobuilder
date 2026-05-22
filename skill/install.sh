@@ -7,7 +7,7 @@
 # install — git-ignored via skill/.gitignore so runtime state never lands
 # in commits.
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 TARGET="$HOME/.claude/skills/autobuilder"
