@@ -319,7 +319,7 @@ Reference files the next session should read first (in order):
 
 ## Status at Save Point
 
-**Last updated: 2026-05-21 (session 2). Paths corrected from macOS to Linux: this machine is Linux at `/home/jsy/` not `/Users/jsy/`.**
+**Last updated: 2026-05-21 (session 3). Iter-1 of the metric-harness meta-PRD landed at `b0bfa4d`: all 17 acceptance tests pass, unfakeable metric `acceptance_tests_passing_count` climbed 0→17 (ceiling), verdict=advance. Stage 3 effectively complete for this PRD.**
 
 ### Phase A — Skill scaffold: COMPLETE
 
@@ -385,47 +385,59 @@ What's deferred (explicit non-goals for v1, to surface in the postmortem):
 - **Multi-iteration orchestration**. The binary runs ONE iteration; the caller drives the LOOP. Either Claude does it autoresearch-style, or we add an outer `autobuilder loop --iterate-until <budget>` mode that shells out to the edit-agent.
 - **Edit-agent invocation**. The binary doesn't call out to Claude (or anything else) to make `src/` edits. That's the orchestrator's job.
 
-### Resume point — Stage 3 (iterate the meta-PRD)
+### Stage 3 — meta-PRD iteration: COMPLETE (ceiling hit on iter-1)
 
-- Project cwd: `/home/jsy/projects/autobuilder/autobuilder/crates/metric-harness/` (merged into the autobuilder repo via subtree at commit `389ce2c` and relocated under the workspace at `07b0413`). The original standalone repo at `/home/jsy/projects/autobuilder-metric-harness/` still exists on disk but is no longer the source of truth.
-- Branch: `main` of the autobuilder repo (no more dedicated `autobuilder/autobuilder-metric-harness` branch — iter commits land directly on `main` for now; if/when iteration moves to a dedicated branch, document it here).
-- Only `crates/metric-harness/src/main.rs` is editable per `crates/metric-harness/agent/owner-map.json`; everything else under that crate is harness-readonly.
-- Edit-agent contract for the metric-harness binary's CLI (locked by the test stubs):
+- Project cwd: `/home/jsy/projects/autobuilder/autobuilder/crates/metric-harness/` (merged via subtree at `389ce2c`, relocated to workspace at `07b0413`). Standalone repo at `/home/jsy/projects/autobuilder-metric-harness/` is no longer authoritative.
+- Branch: `main` of the autobuilder repo. Iter commits land directly on `main`.
+- Only `crates/metric-harness/src/main.rs` is editable per `crates/metric-harness/agent/owner-map.json`.
+- Edit-agent contract (locked by the test stubs):
   - `autobuilder-metric-harness <project_path> [--head-sha <sha>] [--iteration <n>] [--timeout-seconds <n>] [--pretty]`
   - Exit codes: 0 clean, 1 partial (still emits metrics), 2 missing/non-executable run-metrics.sh, 3 schema validation failure on metrics.json.
-- Iter-0 baseline from the standalone repo (commit `fc3fd57` + receipt for that sha) was scaffold-only and is no longer authoritative at the merged location — re-run iter-0 against the in-workspace path to capture a fresh baseline at the current HEAD before iterating.
-- Next step: re-baseline + iterate. From `/home/jsy/projects/autobuilder/`:
-
-  ```
-  cd autobuilder/crates/metric-harness
-  /home/jsy/projects/autobuilder/autobuilder/target/release/autobuilder loop \
-      --project . --iteration 0 --head-sha "$(git rev-parse HEAD)" \
-      --description "post-merge baseline"
-  # then for each iter:
-  #   edit src/main.rs, git commit -am "iter-N: <hypothesis>", re-run with --iteration N
-  ```
-
-  Act on the printed verdict: advance keeps the commit, revert does `git reset --hard HEAD~1` (destructive; user-confirmed once per session is fine), crash investigates run.log. Repeat until 10/10 or the budget is exhausted.
+- **Iteration history**:
+  - iter-0 baseline @ `57038a3`: metric=0, all 17 acceptance test functions failing (stub `eprintln!`). verdict=baseline.
+  - iter-1 @ `b0bfa4d`: replaced stub with ~320-line script-runner + JSON normalizer covering AC1–AC10. metric=17 (ceiling), 17/17 acceptance tests pass + proptest placeholder. verdict=**advance**.
+- **Metric ceiling reached**: the bash gate counts test *functions* (17), not files (10). The intent-card's stated target of 10 is hit and exceeded. No further iter-N improves the metric — no edit gradient left.
+- **What the iter-1 implementation revealed (fold into postmortem)**:
+  - Strict clippy lints (`unwrap_used = "deny"`, `print_stdout = "warn"`, `print_stderr = "warn"`, `as_conversions = "warn"`, etc.) forced `#![allow(clippy::print_stdout, clippy::print_stderr)]` at the crate level in `src/main.rs`. The scaffold's lint config is good but the template's stub doesn't comply with it — a cohesion issue.
+  - `failure_kind` (timeout / build_error / metric_emission_failure) is emitted into the metrics doc on synthetic paths, but the field is NOT part of the `autobuilder.metrics.v1` schema as documented in `scripts/run-metrics.sh:7-22`. The schema doc needs the field added, or the field name needs to be carved out as a synthetic-only extension.
+  - Manual timeout via `try_wait` poll loop at 50ms interval avoids adding `wait-timeout` as a 6th dep but is non-obvious. Worth a comment in the code, not in the plan.
+- Iter-1 commit touched only `src/main.rs` (319 insertions, 5 deletions). Cargo.lock did not change — deps were already resolved by an earlier build.
 
 ### Known issues to fold into the Phase D postmortem
 
 1. **`templates/scaffold/scripts/run-metrics.sh`** has the same `set -e`-aborts-before-emit bug fixed in this scaffolded copy. Template needs the same `|| true` + `${BLOCKING:-0}` patches.
 2. **`rules/audit-checks.sh`** itself aborts mid-run (exit 1, empty stdout) on a fresh scaffold — likely a `check_seven_receipts_present` or similar pre-condition that's not met at baseline. Should be defensive: emit valid `{findings:[], blocking_count:0, advisory_count:0}` even when no checks pass.
-3. The clippy `print_stderr = "warn"` denial means the template `src/main.rs` stub (which uses `eprintln!`) cannot pass `clippy -- -D warnings`. Either relax the lint for `src/main.rs` or have the scaffold emit a different stub.
-4. The bash `AC_PASSING` grep counts function-level passes; `AC_TOTAL` counts files. They're not directly comparable — fine as a coarse gradient, but the Rust harness must normalize this.
-5. The `time` crate (cleaner RFC3339 path) requires rustc ≥ 1.88 in its current line; we're pinned to 1.85.0 via `rust-toolchain.toml`. Until the toolchain pin is bumped (decide whether to track stable), keep using the std-only `civil_from_days` helper in `loop_runner.rs`.
+3. The clippy `print_stderr = "warn"` denial means the template `src/main.rs` stub (which uses `eprintln!`) cannot pass `clippy -- -D warnings`. Either relax the lint for `src/main.rs`, have the scaffold emit a different stub, or add `#![allow(clippy::print_stdout, clippy::print_stderr)]` to the template (the iter-1 implementation needed exactly this).
+4. The bash `AC_PASSING` grep counts function-level passes; `AC_TOTAL` counts files. They're not directly comparable — fine as a coarse gradient, but the Rust harness must normalize this. Surfaced concretely on iter-1: metric=17 against a stated target of 10.
+5. The `time` crate (cleaner RFC3339 path) requires rustc ≥ 1.88 in its current line; we're pinned to 1.85.0 via `rust-toolchain.toml`. Until the toolchain pin is bumped (decide whether to track stable), keep using the std-only `civil_from_days` helper in `loop_runner.rs` (and `crates/metric-harness/src/main.rs`).
+6. **`failure_kind` not in the `autobuilder.metrics.v1` schema doc**. The metric-harness emits this field on timeout/build_error/metric_emission_failure paths (per AC8, AC9), but `crates/metric-harness/scripts/run-metrics.sh:7-22` documents the schema without it. Either add `failure_kind: <string or null>` to the schema spec, or carve it out as a synthetic-only extension.
+7. **AC ceiling vs. PRD target mismatch.** The PRD declared target=10 for `acceptance_tests_passing_count`; the bash counts function-level passes (max 17). Loop's verdict logic just checks "improved", so the gradient still works — but a future PRD needs to declare its target in the same units the bash counts in, or the bash needs to count in the units the PRD declares.
+
+### Resume point — Stage 4 (Risk Gate)
+
+Stage 3 hit the ceiling on iter-1. Next phase per the architecture is Stage 4: the 7-receipt risk gate (`PLAN.md:134-148`). Of the 7:
+- `intake` — DONE (intent-card at `~/.claude/skills/autobuilder/proposals/intake-autobuilder-metric-harness-20260521T000000Z.json`).
+- `proof-receipt` — DONE per-iteration via `autobuilder loop` (`crates/metric-harness/target/autobuilder/receipts/<sha>.json`). May need an aggregation step or a "release receipt" on HEAD.
+- `vti-plan` — NOT STARTED. `crates/metric-harness/agent/proof-lanes.toml` exists from the scaffold but is not consulted by any tool. Needs a path-router that resolves each changed file to ≥1 lane.
+- `risk-gate` — PARTIAL. `~/.claude/skills/autobuilder/rules/audit-checks.sh` exists with 22 detectors but has the abort-on-fresh-scaffold bug (issue #2 above). Needs the defensive fix + an integration that fails the gate on blocking findings.
+- `reviewer-agent` — NOT STARTED. Subagent prompt exists at `~/.claude/skills/autobuilder/prompts/reviewer-agent.md`; needs a launcher that runs it against `HEAD~N..HEAD` and writes the decision receipt.
+- `rollback-plan` — NOT STARTED. Need `target/autobuilder/rollback.md` per the architecture; trivially writable since iter commits are linear (single revert per iter).
+- `ci-checks` — NOT STARTED. `templates/scaffold/.github/workflows/ci.yml` exists but has never been run; needs a green run on a fresh clone (and a `.github/workflows/ci.yml` for the autobuilder repo itself, which doesn't exist yet).
+
+Suggested order: rollback-plan (trivial) → fix audit-checks.sh defensive bug → reviewer-agent launcher → vti-plan path router → ci-checks (needs the autobuilder repo to have its own CI). Then a `gate` subcommand on the autobuilder binary that walks all 7 and emits a release-receipt.
+
+Alternative path (deferred): the Phase D postmortem from this Stage 3 run. PLAN line 286-294 calls for "postmortem; this is the v1 acceptance test" before Phase D backfill. The known-issues list above is the postmortem in seed form.
 
 ### How to resume
 
-1. Read this `PLAN.md` in full (especially the resolved-decisions and Phase C blocks).
+1. Read this `PLAN.md` in full (especially the resolved-decisions, Phase C, Stage 3 history, and known-issues blocks).
 2. Verify Phase A files exist: `ls /home/jsy/.claude/skills/autobuilder/`.
-3. Verify Phase B + Stage 3 binary builds: `cd /home/jsy/projects/autobuilder/autobuilder && cargo build --release` (toolchain auto-installs if missing).
-4. Verify scaffolded project compiles + tests run + baseline metrics emit:
-   - `cd /home/jsy/projects/autobuilder/autobuilder/crates/metric-harness && cargo test --no-fail-fast` → expect 17 failures + 1 proptest placeholder pass
-   - `/home/jsy/projects/autobuilder/autobuilder/target/release/autobuilder loop --project . --iteration 0 --head-sha "$(git rev-parse HEAD)" --description "verify baseline"` → expect `verdict=baseline`, results.tsv + receipts/ written.
-5. Read the PRD: `/home/jsy/.claude/plans/autobuilder-prd-metric-harness.md`.
-6. Read the intent-card: `~/.claude/skills/autobuilder/proposals/intake-autobuilder-metric-harness-20260521T000000Z.json`.
-7. Begin iterating: read the next failing AC, edit `src/main.rs`, commit, invoke `autobuilder loop` with the new iteration number + head sha + a short description. Repeat.
+3. Verify Phase B + Stage 3 binary builds: `cd /home/jsy/projects/autobuilder/autobuilder && cargo build --release` (toolchain auto-installs if missing; `~/.cargo/bin` must be on PATH).
+4. Verify iter-1 still green: `cd /home/jsy/projects/autobuilder/autobuilder/crates/metric-harness && PATH="$HOME/.cargo/bin:$PATH" cargo test` → expect 17 acceptance + 1 proptest placeholder all pass.
+5. Verify the loop runner sees the same: `PATH="$HOME/.cargo/bin:$PATH" /home/jsy/projects/autobuilder/autobuilder/target/release/autobuilder loop --project . --iteration N --head-sha "$(git rev-parse HEAD)" --description "verify"` for some N > 1 → expect `verdict=advance` (metric unchanged from iter-1, so technically "no improvement" → revert; if so just bump to a fresh commit and re-run, or accept that the metric is at ceiling and move to Stage 4).
+6. Decide: Stage 4 (Risk Gate) or Phase D (postmortem + scaffold-template fixes). See "Resume point — Stage 4" above.
+
+If Stage 4: start with rollback-plan (smallest), then fix the audit-checks.sh defensive bug (unblocks the existing risk-gate.sh script), then layer in the others.
 
 Source repos (do not re-clone, already present):
 - `/home/jsy/projects/autobuilder/autoresearch-macos/`
