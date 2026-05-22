@@ -127,7 +127,10 @@ fn derive_suggestions(proposals: &[LoadedProposal], skill_root: &Path) -> Vec<Su
         total_revert += iters_revert;
         total_crash += iters_crash;
         total_capsules += capsules;
-        if iters_advance == 0 && field_u64(&p.value, "iters_total") > 0 {
+        // Require ≥1 post-baseline iteration attempt before flagging "stalled".
+        // iters_total includes the baseline row, so iters_total == 1 means
+        // "scaffolded but not yet iterated" — not the same as stalled.
+        if iters_advance == 0 && field_u64(&p.value, "iters_total") > 1 {
             zero_advance_runs.push(slug.to_owned());
         }
         if iters_crash > 0 {
@@ -399,7 +402,40 @@ fn load_proposals(
             score,
         });
     }
-    Ok(out)
+    Ok(dedupe_by_slug(out))
+}
+
+/// Keep only the latest proposal per `intent_slug` (latest `captured_at`).
+/// Re-running postmortem leaves a fresh JSON next to the old one — the
+/// old one is the same run with stale counters. The honest behavior is to
+/// learn from the latest snapshot per project, not weight a multi-run
+/// proposal twice because there's an older copy on disk.
+fn dedupe_by_slug(mut proposals: Vec<LoadedProposal>) -> Vec<LoadedProposal> {
+    proposals.sort_by(|a, b| {
+        let slug_a = a.value.get("intent_slug").and_then(Value::as_str).unwrap_or("");
+        let slug_b = b.value.get("intent_slug").and_then(Value::as_str).unwrap_or("");
+        let captured_a = a.value.get("captured_at").and_then(Value::as_str).unwrap_or("");
+        let captured_b = b.value.get("captured_at").and_then(Value::as_str).unwrap_or("");
+        slug_a
+            .cmp(slug_b)
+            .then_with(|| captured_b.cmp(captured_a)) // newer first within slug
+    });
+    let mut seen_slugs: HashSet<String> = HashSet::new();
+    let mut out: Vec<LoadedProposal> = Vec::new();
+    for p in proposals {
+        let slug = p
+            .value
+            .get("intent_slug")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        if seen_slugs.contains(&slug) {
+            continue;
+        }
+        seen_slugs.insert(slug);
+        out.push(p);
+    }
+    out
 }
 
 fn field_u64(v: &Value, key: &str) -> u64 {
