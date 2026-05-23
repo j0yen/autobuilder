@@ -19,6 +19,7 @@ use crate::receipt;
 use anyhow::{Context, Result, anyhow};
 use clap::Args as ClapArgs;
 use serde::{Deserialize, Serialize};
+use session_trace_receipt as session_trace_lib;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -40,6 +41,18 @@ pub(crate) struct Args {
     /// Short description for the results.tsv row.
     #[arg(long, default_value = "")]
     pub description: String,
+
+    /// Wrap the metric-harness spawn with ctrace start/stop and emit a
+    /// session-trace receipt at target/autobuilder/receipts/session-trace.json.
+    /// Gracefully degrades to verdict=skipped when the ctrace binary is
+    /// missing or the start command fails; never aborts the iteration.
+    #[arg(long, default_value_t = false)]
+    pub trace: bool,
+
+    /// Path or binary name for the ctrace tracer. Defaults to `ctrace` on
+    /// PATH; override for non-standard installs.
+    #[arg(long, default_value = "ctrace")]
+    pub trace_binary: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,6 +109,7 @@ impl Verdict {
 }
 
 #[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
+#[allow(clippy::too_many_lines)] // single linear iteration pipeline; splitting hides the flow
 pub(crate) fn run(args: Args) -> Result<()> {
     let project = args
         .project
@@ -103,10 +117,47 @@ pub(crate) fn run(args: Args) -> Result<()> {
         .with_context(|| format!("project path not found: {}", args.project.display()))?;
 
     let card = read_intent_card(&project)?;
-    let metric_name = card.unfakeable_metric.name;
+    let metric_name = card.unfakeable_metric.name.clone();
     let lower_is_better = card.unfakeable_metric.lower_is_better;
 
+    // Trace session bracketing the harness spawn. If args.trace is false
+    // or the tracer can't start, this is a no-op and we never write a
+    // session-trace receipt (gate handles the "missing receipt" case
+    // separately via skipped verdict in the receipt or absence of the
+    // receipt entirely).
+    let mut trace_handle: Option<TraceHandle> = None;
+    if args.trace {
+        trace_handle = start_trace(&project, &args.trace_binary);
+    }
+
     let script_exit = run_harness(&project)?;
+
+    if let Some(handle) = trace_handle.take() {
+        let receipt = finalize_trace(handle, &project, &args, &card)?;
+        let receipts_dir = project.join("target/autobuilder/receipts");
+        fs::create_dir_all(&receipts_dir).ok();
+        let path = receipts_dir.join("session-trace.json");
+        let value = serde_json::to_value(&receipt)
+            .context("serializing session-trace receipt")?;
+        receipt::write(&path, value)
+            .with_context(|| format!("writing {}", path.display()))?;
+    } else if args.trace {
+        // ctrace was requested but never started — emit a skipped receipt
+        // so the gate sees a fresh receipt at this HEAD rather than a
+        // stale one from a previous run.
+        let receipts_dir = project.join("target/autobuilder/receipts");
+        fs::create_dir_all(&receipts_dir).ok();
+        let receipt = session_trace_lib::skipped_receipt(
+            args.head_sha.clone(),
+            receipt::now_rfc3339()?,
+            "tracer_unavailable: ctrace binary missing or start failed",
+        );
+        let path = receipts_dir.join("session-trace.json");
+        let value = serde_json::to_value(&receipt)
+            .context("serializing session-trace skipped receipt")?;
+        receipt::write(&path, value)
+            .with_context(|| format!("writing {}", path.display()))?;
+    }
 
     let metrics_path = project.join("target/autobuilder/metrics.json");
     let metrics_text = fs::read_to_string(&metrics_path).with_context(|| {
@@ -410,4 +461,75 @@ fn write_receipt(project: &Path, r: Receipt<'_>) -> Result<()> {
         .join("target/autobuilder/receipts")
         .join(format!("{}.json", r.head_sha));
     receipt::write(&receipt_path, value)
+}
+
+/// Live state of a ctrace session: the absolute path of the NDJSON log
+/// (so the post-harness teardown knows where to read from) and the
+/// tracer binary name (so stop can use the same binary that started).
+struct TraceHandle {
+    log_path: PathBuf,
+    binary: String,
+}
+
+/// Attempt to spawn `<binary> start --root <our_pid> --log <log>`. Returns
+/// None on any failure path (binary missing, sudo denied, bpftrace
+/// missing) so the caller can emit a skipped receipt instead of crashing
+/// the iteration. The PRD's degraded-gracefully rule.
+fn start_trace(project: &Path, binary: &str) -> Option<TraceHandle> {
+    let log = project.join("target/autobuilder/session-trace.ndjson");
+    if let Some(parent) = log.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    let pid = std::process::id().to_string();
+    let output = Command::new(binary)
+        .args(["start", "--root", pid.as_str(), "--log"])
+        .arg(&log)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        eprintln!(
+            "trace start failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+        return None;
+    }
+    Some(TraceHandle {
+        log_path: log,
+        binary: binary.to_owned(),
+    })
+}
+
+/// Stop the tracer and read the captured NDJSON log. Evaluates against
+/// the intent-card's `hard_constraints` (via
+/// `session_trace_lib::HardConstraints::from_intent_card`) and returns a
+/// populated [`session_trace_lib::SessionTraceReceipt`].
+#[allow(clippy::needless_pass_by_value)] // handle is consumed (we tear down its log path); explicit by-value reads cleaner
+fn finalize_trace(
+    handle: TraceHandle,
+    project: &Path,
+    args: &Args,
+    _card: &IntentCard,
+) -> Result<session_trace_lib::SessionTraceReceipt> {
+    // Best-effort stop; if it fails, we still try to read whatever log
+    // exists. The receipt's log_sha256 captures whatever we ended up with.
+    let _ = Command::new(&handle.binary).arg("stop").output();
+    let intent_card_path = project.join("agent/intent-card.json");
+    let intent_card_text = fs::read_to_string(&intent_card_path)
+        .with_context(|| format!("re-reading {}", intent_card_path.display()))?;
+    let intent_card_value: serde_json::Value =
+        serde_json::from_str(&intent_card_text).context("intent-card.json is not valid JSON")?;
+    let constraints = session_trace_lib::HardConstraints::from_intent_card(&intent_card_value);
+    let tracer = session_trace_lib::tracer_info_from_log(&handle.log_path)
+        .with_context(|| format!("reading trace log {}", handle.log_path.display()))?;
+    let log_text = fs::read_to_string(&handle.log_path).unwrap_or_default();
+    let events = session_trace_lib::parse_ndjson(&log_text);
+    let evaluation = session_trace_lib::evaluate(&events, &constraints);
+    let receipt = session_trace_lib::build_receipt(
+        args.head_sha.clone(),
+        receipt::now_rfc3339()?,
+        tracer,
+        evaluation,
+        Vec::new(),
+    );
+    Ok(receipt)
 }

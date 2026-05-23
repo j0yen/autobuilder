@@ -89,6 +89,18 @@ const RECEIPT_SPECS: &[ReceiptSpec] = &[
         requires_head_match: true,
         pass_verdicts: &["pass"],
     },
+    ReceiptSpec {
+        name: "session-trace",
+        file_name: ReceiptPath::Static("session-trace.json"),
+        expected_schema: "autobuilder.session_trace_receipt.v1",
+        requires_head_match: true,
+        // `pass` = trace ran, no constraint violations. `skipped` = the
+        // tracer was unavailable on the host (ctrace/sudo/bpftrace missing);
+        // the receipt is still present and digest-bound, but the gate must
+        // not reject the iteration for an environment limitation. `block`
+        // and `concern` (future) would fail the gate.
+        pass_verdicts: &["pass", "skipped"],
+    },
 ];
 
 #[derive(Debug, Serialize)]
