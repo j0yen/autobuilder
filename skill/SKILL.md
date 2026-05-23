@@ -173,3 +173,10 @@ Missing receipts → block + machine-readable diagnostic. No self-approval.
 ## Status
 
 **v0.1 — Phase A in progress.** Schemas, rules, prompts being scaffolded. The Rust binary (Phase B) and the first meta-PRD run (Phase C) follow.
+
+## Known block — recall-memory-linter
+
+Reviewer flagged: 1, 7.
+Investigate the underlying cause and either fix the implementation
+or amend the intent-card if the AC was wrong. Re-run the gate before
+shipping.
