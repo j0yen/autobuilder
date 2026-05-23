@@ -55,6 +55,38 @@ struct Proposal {
     failure_capsule_count: usize,
     final_metric: Option<f64>,
     notes: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    audit_summary: Option<AuditSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reviewer_summary: Option<ReviewerSummary>,
+}
+
+#[derive(Debug, Serialize)]
+struct AuditSummary {
+    blocking_count: i64,
+    advisory_count: i64,
+    /// Per-detector occurrence counts across all findings in risk-gate.json.
+    /// Distinct detector names are the load-bearing signal for evolve — a
+    /// detector that fires across multiple projects' risk-gates is the
+    /// "audit-checks needs tightening" pattern we want to surface.
+    detector_counts: BTreeMap<String, i64>,
+    /// The subset of detectors that produced ≥1 blocking finding here.
+    blocking_detectors: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewerSummary {
+    decision: String,
+    block_reasons: Vec<String>,
+    /// Each concern's `id` plus its `note`, preserved verbatim so evolve
+    /// can recognize identical concerns across runs.
+    concerns: Vec<ConcernEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct ConcernEntry {
+    id: String,
+    note: String,
 }
 
 #[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
@@ -118,6 +150,9 @@ pub(crate) fn run(args: Args) -> Result<()> {
         &notes,
     )?;
 
+    let audit_summary = read_audit_summary(&receipts_dir.join("risk-gate.json"));
+    let reviewer_summary = read_reviewer_summary(&receipts_dir.join("reviewer-agent.json"));
+
     let proposal = Proposal {
         schema: "autobuilder.evolution_proposal.v1",
         intent_slug: intent_slug.clone(),
@@ -130,6 +165,8 @@ pub(crate) fn run(args: Args) -> Result<()> {
         failure_capsule_count: capsule_count,
         final_metric,
         notes,
+        audit_summary,
+        reviewer_summary,
     };
     let proposals_dir = expand_tilde(&args.proposals_dir);
     fs::create_dir_all(&proposals_dir)
@@ -149,6 +186,71 @@ pub(crate) fn run(args: Args) -> Result<()> {
         proposal_path.display()
     );
     Ok(())
+}
+
+/// Parse the risk-gate receipt into a structured summary suitable for evolve's
+/// pattern-matching. Returns None if the file is missing/unreadable — evolve
+/// degrades to "no audit signal" rather than crashing.
+fn read_audit_summary(path: &Path) -> Option<AuditSummary> {
+    let text = fs::read_to_string(path).ok()?;
+    let v: Value = serde_json::from_str(&text).ok()?;
+    let findings = v.get("findings").and_then(Value::as_array)?;
+    let mut detector_counts: BTreeMap<String, i64> = BTreeMap::new();
+    let mut blocking_set: BTreeMap<String, bool> = BTreeMap::new();
+    for f in findings {
+        let Some(detector) = f.get("detector").and_then(Value::as_str) else { continue };
+        *detector_counts.entry(detector.to_owned()).or_insert(0) += 1;
+        if f.get("severity").and_then(Value::as_str) == Some("blocking") {
+            blocking_set.insert(detector.to_owned(), true);
+        }
+    }
+    Some(AuditSummary {
+        blocking_count: v
+            .get("blocking_count")
+            .and_then(Value::as_i64)
+            .unwrap_or(0),
+        advisory_count: v
+            .get("advisory_count")
+            .and_then(Value::as_i64)
+            .unwrap_or(0),
+        detector_counts,
+        blocking_detectors: blocking_set.into_keys().collect(),
+    })
+}
+
+/// Parse the reviewer-agent receipt into a structured summary. Returns None
+/// if missing — evolve degrades to "no reviewer signal."
+fn read_reviewer_summary(path: &Path) -> Option<ReviewerSummary> {
+    let text = fs::read_to_string(path).ok()?;
+    let v: Value = serde_json::from_str(&text).ok()?;
+    let decision = v.get("decision").and_then(Value::as_str)?.to_owned();
+    let block_reasons: Vec<String> = v
+        .get("block_reasons")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|e| e.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+    let concerns: Vec<ConcernEntry> = v
+        .get("concern_reasons")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|c| {
+                    let id = c.get("id").and_then(Value::as_str)?.to_owned();
+                    let note = c.get("note").and_then(Value::as_str)?.to_owned();
+                    Some(ConcernEntry { id, note })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(ReviewerSummary {
+        decision,
+        block_reasons,
+        concerns,
+    })
 }
 
 fn read_intent_slug(project: &Path) -> Option<String> {

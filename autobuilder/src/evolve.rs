@@ -19,7 +19,7 @@ use crate::receipt;
 use anyhow::{Context, Result, anyhow};
 use clap::Args as ClapArgs;
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -104,6 +104,7 @@ fn derive_suggestions(proposals: &[LoadedProposal], skill_root: &Path) -> Vec<Su
     let skill_md = skill_root.join("SKILL.md");
     let bad_rust = skill_root.join("rules/bad-rust.md");
     let template_harness = skill_root.join("templates/scaffold/scripts/run-metrics.sh");
+    let audit_rules = skill_root.join("rules/audit-checks.sh");
 
     let mut total_crash = 0u64;
     let mut total_revert = 0u64;
@@ -112,6 +113,10 @@ fn derive_suggestions(proposals: &[LoadedProposal], skill_root: &Path) -> Vec<Su
     let mut zero_advance_runs: Vec<String> = Vec::new();
     let mut crash_note_runs: Vec<String> = Vec::new();
     let mut harness_abort_seen = false;
+    // Cross-proposal aggregations for the audit + reviewer rules.
+    let mut blocking_detector_slugs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut concern_slugs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut block_decisions: Vec<(String, Vec<String>)> = Vec::new();
 
     for p in proposals {
         let slug = p
@@ -143,6 +148,47 @@ fn derive_suggestions(proposals: &[LoadedProposal], skill_root: &Path) -> Vec<Su
                 if l.contains("harness") && (l.contains("abort") || l.contains("set -e")) {
                     harness_abort_seen = true;
                 }
+            }
+        }
+
+        if let Some(audit) = p.value.get("audit_summary") {
+            if let Some(bd) = audit.get("blocking_detectors").and_then(Value::as_array) {
+                for d in bd {
+                    if let Some(name) = d.as_str() {
+                        blocking_detector_slugs
+                            .entry(name.to_owned())
+                            .or_default()
+                            .insert(slug.to_owned());
+                    }
+                }
+            }
+        }
+        if let Some(reviewer) = p.value.get("reviewer_summary") {
+            let decision = reviewer
+                .get("decision")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if let Some(concerns) = reviewer.get("concerns").and_then(Value::as_array) {
+                for c in concerns {
+                    if let Some(id) = c.get("id").and_then(Value::as_str) {
+                        concern_slugs
+                            .entry(id.to_owned())
+                            .or_default()
+                            .insert(slug.to_owned());
+                    }
+                }
+            }
+            if decision == "block" {
+                let block_reasons = reviewer
+                    .get("block_reasons")
+                    .and_then(Value::as_array)
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|e| e.as_str().map(str::to_owned))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                block_decisions.push((slug.to_owned(), block_reasons));
             }
         }
     }
@@ -220,7 +266,7 @@ fn derive_suggestions(proposals: &[LoadedProposal], skill_root: &Path) -> Vec<Su
 
     if total_capsules > 0 {
         out.push(Suggestion {
-            target: skill_md,
+            target: skill_md.clone(),
             rationale: format!(
                 "{total_capsules} failure capsule(s) total across runs; surface them in postmortem"
             ),
@@ -230,6 +276,90 @@ fn derive_suggestions(proposals: &[LoadedProposal], skill_root: &Path) -> Vec<Su
                 String::new(),
                 "Failure capsules accumulate in target/autobuilder/failure-capsules/.".to_owned(),
                 "Postmortem should aggregate by repro-fingerprint, not by timestamp.".to_owned(),
+            ],
+        });
+    }
+
+    // ---- Rules consuming the enriched audit_summary / reviewer_summary ----
+
+    // Any reviewer decision == block on any proposal — surface immediately,
+    // no threshold. This is the loudest reviewer signal and shouldn't wait
+    // for recurrence.
+    for (slug, reasons) in &block_decisions {
+        let reasons_str = if reasons.is_empty() {
+            "<no reasons given>".to_owned()
+        } else {
+            reasons.join(", ")
+        };
+        out.push(Suggestion {
+            target: skill_md.clone(),
+            rationale: format!(
+                "reviewer-agent decision=block on {slug}: {reasons_str}; document the failure mode so the next run treats it as a known anti-pattern"
+            ),
+            appended_lines: vec![
+                String::new(),
+                format!("## Known block — {slug}"),
+                String::new(),
+                format!("Reviewer flagged: {reasons_str}."),
+                "Investigate the underlying cause and either fix the implementation".to_owned(),
+                "or amend the intent-card if the AC was wrong. Re-run the gate before".to_owned(),
+                "shipping.".to_owned(),
+            ],
+        });
+    }
+
+    // Recurring concern_id across ≥2 distinct slugs — the human reviewer
+    // keeps flagging the same issue, so it's worth proactively documenting.
+    for (concern_id, slugs) in &concern_slugs {
+        if slugs.len() < 2 {
+            continue;
+        }
+        let slug_list = slugs.iter().cloned().collect::<Vec<_>>().join(", ");
+        out.push(Suggestion {
+            target: skill_md.clone(),
+            rationale: format!(
+                "reviewer concern `{concern_id}` repeated across {} runs ({slug_list}); promote to SKILL.md known-issues",
+                slugs.len()
+            ),
+            appended_lines: vec![
+                String::new(),
+                format!("## Recurring reviewer concern — {concern_id}"),
+                String::new(),
+                format!(
+                    "This concern was raised by the independent reviewer-agent on {} separate runs ({slug_list}).",
+                    slugs.len()
+                ),
+                "Treat as a known anti-pattern: file an explicit waiver if intentional,".to_owned(),
+                "or fix the underlying cause before the next gate run.".to_owned(),
+            ],
+        });
+    }
+
+    // Recurring blocking-detector across ≥2 distinct slugs — the audit
+    // detector keeps firing as blocking on different projects, which is
+    // the signature of a layout-dependent false positive or a detector
+    // whose threshold is too low.
+    for (detector, slugs) in &blocking_detector_slugs {
+        if slugs.len() < 2 {
+            continue;
+        }
+        let slug_list = slugs.iter().cloned().collect::<Vec<_>>().join(", ");
+        out.push(Suggestion {
+            target: audit_rules.clone(),
+            rationale: format!(
+                "audit detector `{detector}` produced blocking findings on {} distinct projects ({slug_list}); investigate whether the detector is too aggressive or layout-dependent",
+                slugs.len()
+            ),
+            appended_lines: vec![
+                String::new(),
+                format!("# NOTE — recurring detector across runs: {detector}"),
+                format!(
+                    "# Fired on {} distinct projects ({slug_list}). Likely either a layout-",
+                    slugs.len()
+                ),
+                "# dependent false positive or a real recurring pattern that should be".to_owned(),
+                "# either tightened (false positive) or promoted to a hard project-template".to_owned(),
+                "# constraint (real pattern).".to_owned(),
             ],
         });
     }
