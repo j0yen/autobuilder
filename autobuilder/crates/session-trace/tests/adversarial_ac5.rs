@@ -7,7 +7,7 @@
 //! description of AC5, not against the implementation itself. If any of these
 //! fail, the implementation is weaker than the AC requires.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::doc_markdown)]
 
 use session_trace_receipt::*;
 
@@ -23,7 +23,7 @@ fn ev(ts: u64, kind: &str) -> TraceEvent {
     }
 }
 
-fn deny_net_only() -> HardConstraints {
+const fn deny_net_only() -> HardConstraints {
     HardConstraints {
         deny_network: true,
         deny_unsafe_runtime: false,
