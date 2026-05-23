@@ -72,6 +72,7 @@ name = "autobuilder"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "autobuilder-gate",
  "autobuilder-receipt",
  "clap",
  "globset",
@@ -81,6 +82,17 @@ dependencies = [
  "session-trace-receipt",
  "sha2",
  "toml",
+]
+
+[[package]]
+name = "autobuilder-gate"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
