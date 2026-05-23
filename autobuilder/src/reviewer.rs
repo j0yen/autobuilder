@@ -35,6 +35,12 @@ pub(crate) enum Action {
     Prepare(PrepareArgs),
     /// Validate the subagent's JSON output and write target/autobuilder/receipts/reviewer-agent.json.
     Finalize(FinalizeArgs),
+    /// Emit a `decision=concern` self-host stub receipt so a standalone
+    /// gate can reach 8/8 without spawning a real Claude subagent. The
+    /// receipt explicitly notes that no independent review occurred and
+    /// must not be used as evidence for shipping. Intended for local
+    /// development, dogfood builds, and CI smoke runs.
+    SelfHostStub(SelfHostStubArgs),
 }
 
 #[derive(Debug, ClapArgs)]
@@ -59,11 +65,19 @@ pub(crate) struct FinalizeArgs {
     pub input: PathBuf,
 }
 
+#[derive(Debug, ClapArgs)]
+pub(crate) struct SelfHostStubArgs {
+    /// Project directory containing agent/intent-card.json and the git repo.
+    #[arg(long, default_value = ".")]
+    pub project: PathBuf,
+}
+
 #[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
 pub(crate) fn run(args: Args) -> Result<()> {
     match args.action {
         Action::Prepare(a) => prepare(a),
         Action::Finalize(a) => finalize(a),
+        Action::SelfHostStub(a) => self_host_stub(a),
     }
 }
 
@@ -401,4 +415,69 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("sha256:{:x}", hasher.finalize())
+}
+
+/// Emit a `decision=concern` stub receipt that unblocks a standalone gate
+/// without an independent Claude subagent.
+///
+/// **This is not a real review.** The `concern_reasons` array carries an
+/// explicit `self-host-stub` entry; the falsification prose sections name
+/// themselves as placeholders. The empty `counter_attack.test_skeleton`
+/// matches the existing finalize-path downgrade rule that already
+/// classifies stub-shaped receipts as concern. Use only for local
+/// development, dogfood iterations, and CI smoke runs where no real
+/// review can run.
+#[allow(clippy::needless_pass_by_value)] // owned `SelfHostStubArgs` matches the clap-dispatched contract
+fn self_host_stub(args: SelfHostStubArgs) -> Result<()> {
+    let project = args
+        .project
+        .canonicalize()
+        .with_context(|| format!("project path not found: {}", args.project.display()))?;
+
+    let head_sha = git_rev_parse(&project, "HEAD")?;
+    let intent_card_bytes = fs::read(project.join("agent/intent-card.json"))
+        .context("missing agent/intent-card.json")?;
+    let intent_card_sha = sha256_hex(&intent_card_bytes);
+
+    let placeholder = "self-host stub: no independent review performed; \
+                       this section is a placeholder so the receipt schema validates"
+        .to_string();
+    let doc = FinalReceipt {
+        schema: "autobuilder.reviewer_agent_receipt.v1",
+        head_sha: head_sha.clone(),
+        intent_card_sha,
+        decision: "concern".to_string(),
+        block_reasons: Vec::new(),
+        concern_reasons: vec![ConcernEntry {
+            id: "self-host-stub".to_string(),
+            note: "self-host stub — not an independent review; do not use as evidence \
+                   for shipping. Re-run `autobuilder reviewer-agent prepare` and have \
+                   a real Claude subagent produce the real receipt before merging."
+                .to_string(),
+        }],
+        falsification: Falsification {
+            test_audit: placeholder.clone(),
+            panic_audit: placeholder.clone(),
+            unsafe_audit: placeholder.clone(),
+            public_api_audit: placeholder.clone(),
+            deps_audit: placeholder.clone(),
+            drift_audit: placeholder.clone(),
+            counter_attack: CounterAttack::Structured {
+                description: "self-host stub: no real attack was attempted".to_string(),
+                test_skeleton: String::new(),
+            },
+        },
+        captured_at: receipt::now_rfc3339()?,
+        receipt_digest: String::new(),
+    };
+    let value = serde_json::to_value(&doc)?;
+    let receipt_path = project.join("target/autobuilder/receipts/reviewer-agent.json");
+    receipt::write(&receipt_path, value)?;
+
+    println!(
+        "reviewer-agent self-host-stub: decision=concern head={head_sha} wrote={} \
+         (NOT a real review)",
+        receipt_path.display()
+    );
+    Ok(())
 }
