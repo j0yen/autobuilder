@@ -42,6 +42,7 @@ pub(crate) struct Args {
 }
 
 #[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
+#[allow(clippy::too_many_lines)] // single linear materialization pipeline; splitting hides the order
 pub(crate) fn run(args: Args) -> Result<()> {
     let card_text = fs::read_to_string(&args.intent_card)
         .with_context(|| format!("missing intent-card at {}", args.intent_card.display()))?;
@@ -95,6 +96,21 @@ pub(crate) fn run(args: Args) -> Result<()> {
     let subs = [("{{intent_slug}}", slug.as_str()), ("{{target_kind}}", target_kind.as_str())];
     let mut files_written = 0usize;
     copy_tree(&template_root, &args.out, &subs, &mut files_written)?;
+
+    // For lib targets, drop the scaffold's `src/main.rs` stub. The template
+    // emits both `src/main.rs` and `src/lib.rs` so the same materialization
+    // works for `target_kind == "cli"`; for lib crates the main.rs is dead
+    // weight that adds clippy `print_stderr` surface and confuses readers
+    // about which file is the primary one. Counter is decremented so the
+    // printed "N files" reflects what's actually on disk.
+    if target_kind == "lib" {
+        let main_rs = args.out.join("src/main.rs");
+        if main_rs.is_file() {
+            fs::remove_file(&main_rs)
+                .with_context(|| format!("could not remove {}", main_rs.display()))?;
+            files_written = files_written.saturating_sub(1);
+        }
+    }
 
     // Replace the shipped placeholder with one acceptance file per AC.
     let template_test = args.out.join("tests/acceptance_template.rs");
