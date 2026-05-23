@@ -243,7 +243,7 @@ fn write_ac_test(tests_dir: &Path, ac: &Value, slug: &str, target_kind: &str) ->
          //! the panic stub with a real assertion that verifies the AC\n\
          //! description above.\n\
          \n\
-         #![allow(clippy::unwrap_used, clippy::expect_used)]\n\
+         #![allow(clippy::unwrap_used, clippy::expect_used, clippy::doc_markdown)]\n\
          \n\
          #[test]\n\
          fn {fn_name}() {{\n\
