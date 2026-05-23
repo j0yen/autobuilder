@@ -51,7 +51,13 @@ if ! cargo clippy --workspace --message-format=json -- -D warnings > target/auto
 fi
 
 echo "::gate cargo test" | tee -a "$LOG"
-cargo test --workspace 2>&1 | tee target/autobuilder/test-output.txt | tee -a "$LOG" || true
+# --no-fail-fast: continue running test binaries after one fails. Without
+# it, cargo halts on the first failing acceptance binary (alphabetical
+# order: acceptance_ac1 first), and the metric counter below sees 0
+# passing tests even when later ACs are green. Hides Stage 3 gradient
+# when only some ACs have been implemented — surfaced in the
+# session-trace-receipt iter-1 postmortem.
+cargo test --workspace --no-fail-fast 2>&1 | tee target/autobuilder/test-output.txt | tee -a "$LOG" || true
 
 # Count AC results by re-running tests with the acceptance_ prefix and parsing.
 AC_TOTAL=$(find tests -maxdepth 1 -name 'acceptance_*.rs' -type f 2>/dev/null | wc -l)
