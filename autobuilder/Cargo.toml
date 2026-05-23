@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/metric-harness", "crates/session-trace"]
+members = [".", "crates/metric-harness", "crates/receipt", "crates/session-trace"]
 exclude = ["crates"]
 resolver = "2"
 
@@ -62,3 +62,4 @@ toml = "0.8"
 globset = "0.4"
 regex = "1"
 session-trace-receipt = { path = "crates/session-trace" }
+autobuilder-receipt = { path = "crates/receipt" }
