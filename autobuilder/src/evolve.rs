@@ -90,6 +90,29 @@ enum ApplyOutcome {
     SkippedMissingTarget,
 }
 
+type DriftKey = (String, String);
+type DriftValue = (BTreeSet<String>, String);
+
+/// Template-drift advisory: emitted when the same `(path, diff_sha256)`
+/// pair appears in proposals from ≥2 distinct slugs, indicating multiple
+/// projects had to apply the same patch to a templated script. The fix
+/// is to update the template — but that's an in-line edit, not append-only,
+/// so we surface advisories for manual review instead of auto-applying.
+/// Phase C of the template-drift work would extend the apply path to
+/// handle this safely (`patch --dry-run` guard + git commit).
+struct TemplateDriftAdvisory {
+    /// Template path that should be patched, e.g.
+    /// `~/.claude/skills/autobuilder/templates/scaffold/scripts/run-metrics.sh`.
+    template_path: PathBuf,
+    /// SHA-256 of the unified diff body. Identical diffs across slugs
+    /// collapse to one advisory keyed by this.
+    diff_sha256: String,
+    /// Slugs whose proposals exhibited this diff.
+    slugs: Vec<String>,
+    /// The unified diff body itself, ready to feed into `patch -p0`.
+    diff_body: String,
+}
+
 #[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
 #[allow(clippy::too_many_lines)] // single linear aggregator-then-renderer
 pub(crate) fn run(args: Args) -> Result<()> {
@@ -118,9 +141,17 @@ pub(crate) fn run(args: Args) -> Result<()> {
     let report_path = dir.join(format!("evolve-report-{date}.md"));
     let diff_path = dir.join(format!("evolve-diff-{date}.patch"));
 
-    let suggestions = derive_suggestions(&proposals, &skill_root);
+    let (suggestions, drift_advisories) = derive_suggestions(&proposals, &skill_root);
 
-    write_report(&report_path, &dir, args.since.as_deref(), &applied, &proposals, &suggestions)?;
+    write_report(
+        &report_path,
+        &dir,
+        args.since.as_deref(),
+        &applied,
+        &proposals,
+        &suggestions,
+        &drift_advisories,
+    )?;
     write_diff(&diff_path, &suggestions)?;
 
     let outcomes: Vec<(ApplyOutcome, &Suggestion)> = suggestions
@@ -144,13 +175,14 @@ pub(crate) fn run(args: Args) -> Result<()> {
         .count();
 
     println!(
-        "evolve: scanned={} top={} suggestions={} applied={} skipped_duplicate={} skipped_missing_target={} report={} diff={}{}",
+        "evolve: scanned={} top={} suggestions={} applied={} skipped_duplicate={} skipped_missing_target={} drift_advisories={} report={} diff={}{}",
         applied.len() + proposals.len(),
         proposals.len(),
         suggestions.len(),
         applied_now,
         skipped_dup,
         skipped_missing,
+        drift_advisories.len(),
         report_path.display(),
         diff_path.display(),
         if args.dry_run { " [dry-run]" } else { "" },
@@ -280,12 +312,16 @@ fn record_applied_fingerprint(
 }
 
 #[allow(clippy::too_many_lines)] // one branch per known proposal-pattern; splitting hides the rule set
-fn derive_suggestions(proposals: &[LoadedProposal], skill_root: &Path) -> Vec<Suggestion> {
+fn derive_suggestions(
+    proposals: &[LoadedProposal],
+    skill_root: &Path,
+) -> (Vec<Suggestion>, Vec<TemplateDriftAdvisory>) {
     let mut out: Vec<Suggestion> = Vec::new();
     let skill_md = skill_root.join("SKILL.md");
     let bad_rust = skill_root.join("rules/bad-rust.md");
     let template_harness = skill_root.join("templates/scaffold/scripts/run-metrics.sh");
     let audit_rules = skill_root.join("rules/audit-checks.sh");
+    let template_root = skill_root.join("templates/scaffold");
 
     let mut total_crash = 0u64;
     let mut total_revert = 0u64;
@@ -298,6 +334,9 @@ fn derive_suggestions(proposals: &[LoadedProposal], skill_root: &Path) -> Vec<Su
     let mut blocking_detector_slugs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut concern_slugs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut block_decisions: Vec<(String, Vec<String>)> = Vec::new();
+    // (template_relpath, diff_sha256) -> (slugs, diff_body). Drift
+    // advisory fires when slugs.len() >= 2.
+    let mut drift_groups: BTreeMap<DriftKey, DriftValue> = BTreeMap::new();
 
     for p in proposals {
         let slug = p
@@ -370,6 +409,21 @@ fn derive_suggestions(proposals: &[LoadedProposal], skill_root: &Path) -> Vec<Su
                     })
                     .unwrap_or_default();
                 block_decisions.push((slug.to_owned(), block_reasons));
+            }
+        }
+        if let Some(diffs) = p.value.get("template_diffs").and_then(Value::as_array) {
+            for d in diffs {
+                let Some(path) = d.get("path").and_then(Value::as_str) else { continue };
+                let Some(sha) = d.get("diff_sha256").and_then(Value::as_str) else { continue };
+                let body = d
+                    .get("diff_body")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_owned();
+                let entry = drift_groups
+                    .entry((path.to_owned(), sha.to_owned()))
+                    .or_insert_with(|| (BTreeSet::new(), body));
+                entry.0.insert(slug.to_owned());
             }
         }
     }
@@ -545,7 +599,26 @@ fn derive_suggestions(proposals: &[LoadedProposal], skill_root: &Path) -> Vec<Su
         });
     }
 
-    out
+    // ---- Template-drift advisories ----
+    // Same diff body in ≥2 distinct slugs → template is missing the fix.
+    // Emitted as advisories (not Suggestions) because the patch is an
+    // in-line edit, not an append, and the current auto-apply path only
+    // handles appends safely. Phase C of the template-drift work would
+    // promote these into Suggestion::Patch variants.
+    let mut drift_advisories: Vec<TemplateDriftAdvisory> = Vec::new();
+    for ((relpath, sha), (slugs, body)) in drift_groups {
+        if slugs.len() < 2 {
+            continue;
+        }
+        drift_advisories.push(TemplateDriftAdvisory {
+            template_path: template_root.join(&relpath),
+            diff_sha256: sha,
+            slugs: slugs.into_iter().collect(),
+            diff_body: body,
+        });
+    }
+
+    (out, drift_advisories)
 }
 
 #[allow(clippy::too_many_arguments)] // flat report-rendering call site; struct'ifying adds noise
@@ -556,6 +629,7 @@ fn write_report(
     applied: &HashSet<String>,
     proposals: &[LoadedProposal],
     suggestions: &[Suggestion],
+    drift_advisories: &[TemplateDriftAdvisory],
 ) -> Result<()> {
     let mut report = String::new();
     let date = receipt::now_rfc3339()?;
@@ -605,6 +679,26 @@ fn write_report(
             ));
         }
         report.push_str("\nSee the companion `.patch` file for the unified-diff hunks. Apply with `patch -p0 < <file>` from the skill dir, or hand-merge after review.\n");
+    }
+    if !drift_advisories.is_empty() {
+        report.push_str(&format!(
+            "\n## Template-drift advisories ({}) — manual review\n\nProjects diverge from the template the same way across multiple slugs. The diff direction below is `template → project` (what a project applied beyond the template's baseline). Two interpretations to triage between:\n\n- **template is behind**: the projects' identical patch is a real fix the template is missing. Action: apply the diff to the template (reverse if needed).\n- **template is ahead**: the projects haven't been re-scaffolded since a template fix landed. Action: re-scaffold the projects or back-port the template's newer content to the projects.\n\nAdvisories are NOT auto-applied because the patch is an in-line edit, not an append, and direction-checking requires human judgment. Phase C of the template-drift work would extend the apply path with a `--patch-direction template-from-projects|projects-from-template` flag.\n\n",
+            drift_advisories.len()
+        ));
+        for (i, a) in drift_advisories.iter().enumerate() {
+            report.push_str(&format!(
+                "### {}. `{}` ({} slugs)\n\n",
+                i + 1,
+                a.template_path.display(),
+                a.slugs.len()
+            ));
+            report.push_str(&format!(
+                "Slugs: {}\nDiff sha256: `{}`\n\n```diff\n{}```\n\n",
+                a.slugs.join(", "),
+                a.diff_sha256,
+                a.diff_body
+            ));
+        }
     }
     fs::write(path, report)
         .with_context(|| format!("cannot write {}", path.display()))?;

@@ -12,6 +12,7 @@ use anyhow::{Context, Result, anyhow};
 use clap::Args as ClapArgs;
 use serde::Serialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,6 +30,14 @@ pub(crate) struct Args {
         default_value = "~/.claude/skills/autobuilder/proposals"
     )]
     pub proposals_dir: String,
+
+    /// Skill root, used to locate templates/scaffold/ for the
+    /// template-drift detector. When the project's scripts/*.sh has been
+    /// patched away from what the template ships, the diff is captured in
+    /// the proposal so evolve can detect the recurring-fix pattern across
+    /// multiple projects.
+    #[arg(long, default_value = "~/.claude/skills/autobuilder")]
+    pub skill_root: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +68,28 @@ struct Proposal {
     audit_summary: Option<AuditSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reviewer_summary: Option<ReviewerSummary>,
+    /// Project-local divergence from `templates/scaffold/scripts/*.sh`,
+    /// captured as unified diffs. Empty when scripts match the template
+    /// (the common case for fresh scaffolds). When the same diff appears
+    /// across multiple projects, evolve treats it as evidence of a
+    /// recurring template bug and surfaces a suggestion to patch the
+    /// template — closing the "we keep fixing the same thing per project"
+    /// loop.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    template_diffs: Vec<TemplateDiff>,
+}
+
+#[derive(Debug, Serialize)]
+struct TemplateDiff {
+    /// Path relative to the project root, e.g. "scripts/run-metrics.sh".
+    /// Same relative path resolves under `templates/scaffold/<path>` in
+    /// the skill tree.
+    path: String,
+    /// sha256 of the diff body. Used by evolve to group identical
+    /// per-project fixes across slugs.
+    diff_sha256: String,
+    /// The unified diff itself (`diff -u template project`).
+    diff_body: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -152,6 +183,8 @@ pub(crate) fn run(args: Args) -> Result<()> {
 
     let audit_summary = read_audit_summary(&receipts_dir.join("risk-gate.json"));
     let reviewer_summary = read_reviewer_summary(&receipts_dir.join("reviewer-agent.json"));
+    let skill_root = expand_tilde(&args.skill_root);
+    let template_diffs = compute_template_diffs(&project, &skill_root);
 
     let proposal = Proposal {
         schema: "autobuilder.evolution_proposal.v1",
@@ -167,6 +200,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
         notes,
         audit_summary,
         reviewer_summary,
+        template_diffs,
     };
     let proposals_dir = expand_tilde(&args.proposals_dir);
     fs::create_dir_all(&proposals_dir)
@@ -316,6 +350,59 @@ fn count_jsons(dir: &Path) -> usize {
                 .is_some_and(|x| x == "json")
         })
         .count()
+}
+
+/// Diff each project script under `scripts/` against the template at
+/// `<skill_root>/templates/scaffold/<path>`. Returns one `TemplateDiff`
+/// per script that differs; empty when project matches template (the
+/// healthy state). Silently skips when either side is missing — the
+/// drift detector is best-effort and must never fail postmortem.
+fn compute_template_diffs(project: &Path, skill_root: &Path) -> Vec<TemplateDiff> {
+    const TRACKED: &[&str] = &[
+        "scripts/run-metrics.sh",
+        "scripts/audit.sh",
+        "scripts/risk-gate.sh",
+    ];
+    let template_root = skill_root.join("templates/scaffold");
+    let mut out: Vec<TemplateDiff> = Vec::new();
+    for rel in TRACKED {
+        let project_path = project.join(rel);
+        let template_path = template_root.join(rel);
+        if !project_path.exists() || !template_path.exists() {
+            continue;
+        }
+        // `diff -u` exits 0 if identical, 1 if differing, ≥2 on error.
+        // We capture only the "differing" case; everything else (including
+        // missing `diff` binary) yields nothing.
+        let Ok(output) = Command::new("diff")
+            .arg("-u")
+            .arg("--label")
+            .arg(format!("template:{rel}"))
+            .arg("--label")
+            .arg(format!("project:{rel}"))
+            .arg(&template_path)
+            .arg(&project_path)
+            .output()
+        else {
+            continue;
+        };
+        if output.status.code() != Some(1) {
+            continue;
+        }
+        let diff_body = String::from_utf8_lossy(&output.stdout).into_owned();
+        if diff_body.is_empty() {
+            continue;
+        }
+        let mut hasher = Sha256::new();
+        hasher.update(diff_body.as_bytes());
+        let diff_sha256 = format!("{:x}", hasher.finalize());
+        out.push(TemplateDiff {
+            path: (*rel).to_owned(),
+            diff_sha256,
+            diff_body,
+        });
+    }
+    out
 }
 
 #[allow(clippy::too_many_arguments)] // postmortem rendering — flat data passthrough is clearer than a struct here
