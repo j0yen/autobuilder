@@ -353,6 +353,29 @@ check_input_boundary_tests() {
   fi
 }
 
+# ---- HLT-aux-PROPTEST-DENSITY: property tests per public surface ----
+#
+# Counts `proptest!` macro invocations under tests/ vs `pub fn` declarations
+# under src/. Below threshold = the test suite is example-only and unlikely
+# to catch boundary errors the edit-agent didn't think of. Advisory severity
+# initially — promote to blocking once the threshold is calibrated.
+
+check_proptest_density() {
+  local proptests
+  proptests=$(grep -rEo '\bproptest!' tests/ 2>/dev/null | wc -l || true)
+  local pub_fns
+  pub_fns=$(grep -rE '^\s*pub fn ' src/ 2>/dev/null | wc -l || true)
+  # No public surface = nothing to property-test. Skip.
+  if [ "${pub_fns:-0}" -eq 0 ]; then
+    return
+  fi
+  local threshold=$(( (pub_fns + 9) / 10 ))  # ceil(pub_fns / 10)
+  if [ "${proptests:-0}" -lt "$threshold" ]; then
+    emit_finding "HLT-aux-PROPTEST-DENSITY" "check_proptest_density" "advisory" "tests/" "0" "" \
+      "proptest density $proptests proptest!() vs $pub_fns pub fn — below 1-per-10 threshold (target: $threshold). Add property tests to catch boundary errors the edit-agent did not anticipate."
+  fi
+}
+
 # ---- HLT-025/027: receipts present ----
 
 check_seven_receipts_present() {
@@ -440,6 +463,7 @@ main() {
   check_test_map_coverage
   check_changed_paths_have_targeted_tests
   check_input_boundary_tests
+  check_proptest_density
   # NOTE: receipt-presence checks (`check_seven_receipts_present`,
   # `check_reviewer_agent_receipt_present`) intentionally do NOT run here.
   # The risk gate (`autobuilder gate`) owns the receipt-presence check;

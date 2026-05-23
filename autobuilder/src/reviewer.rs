@@ -153,7 +153,7 @@ struct ReviewerOutput {
     falsification: Falsification,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct ConcernEntry {
     id: String,
     note: String,
@@ -167,7 +167,44 @@ struct Falsification {
     public_api_audit: String,
     deps_audit: String,
     drift_audit: String,
-    counter_attack: String,
+    /// Counter-attack: a plausible attack the test suite would catch,
+    /// plus an executable test skeleton. Back-compat: deserializes from
+    /// either the old prose-only `String` shape OR the new structured
+    /// `{description, test_skeleton}` shape. Empty `test_skeleton` is
+    /// honest (reviewer couldn't construct one) and downgrades the
+    /// decision to concern during finalize.
+    counter_attack: CounterAttack,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+enum CounterAttack {
+    /// New shape (post-2026-05-23). The orchestrator surfaces
+    /// `test_skeleton` to the adversarial-agent for `tests/adversarial_*.rs`.
+    Structured {
+        description: String,
+        test_skeleton: String,
+    },
+    /// Legacy prose-only shape from receipts written before
+    /// the reviewer-agent.md prompt was upgraded.
+    Prose(String),
+}
+
+impl CounterAttack {
+    fn description(&self) -> &str {
+        match self {
+            Self::Structured { description, .. } => description,
+            Self::Prose(s) => s,
+        }
+    }
+    fn test_skeleton(&self) -> &str {
+        match self {
+            Self::Structured { test_skeleton, .. } => test_skeleton,
+            // Legacy receipts have no test_skeleton; treat as empty so
+            // the finalize downgrade rule fires uniformly.
+            Self::Prose(_) => "",
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -216,21 +253,42 @@ fn finalize(args: FinalizeArgs) -> Result<()> {
         }
     }
     let f = &parsed.falsification;
-    let sections = [
+    let prose_sections: [(&str, &String); 6] = [
         ("test_audit", &f.test_audit),
         ("panic_audit", &f.panic_audit),
         ("unsafe_audit", &f.unsafe_audit),
         ("public_api_audit", &f.public_api_audit),
         ("deps_audit", &f.deps_audit),
         ("drift_audit", &f.drift_audit),
-        ("counter_attack", &f.counter_attack),
     ];
-    for (name, body) in sections {
+    for (name, body) in prose_sections {
         if body.trim().is_empty() {
             return Err(anyhow!(
                 "falsification.{name} is empty; reviewer-agent.md requires every section to be non-empty"
             ));
         }
+    }
+    if f.counter_attack.description().trim().is_empty() {
+        return Err(anyhow!(
+            "falsification.counter_attack.description is empty; reviewer-agent.md requires a plausible attack to be described"
+        ));
+    }
+    // Downgrade pass → concern when test_skeleton is empty. An empty
+    // skeleton means the reviewer either couldn't construct a falsifying
+    // input (legitimate, but worth flagging) or skipped writing one
+    // (lazy, also worth flagging). Either way, "pass" overclaims
+    // confidence; "concern" is honest and lets the gate continue
+    // (pass_verdicts for reviewer-agent includes both).
+    let mut effective_decision = parsed.decision.clone();
+    let mut downgrade_concerns = parsed.concern_reasons.clone();
+    if f.counter_attack.test_skeleton().trim().is_empty()
+        && effective_decision == "pass"
+    {
+        effective_decision = "concern".to_string();
+        downgrade_concerns.push(ConcernEntry {
+            id: "counter-attack-skeleton-missing".to_string(),
+            note: "reviewer-agent supplied counter_attack prose but no executable test_skeleton; downgrading to concern so the adversarial-agent has nothing to consume — the next iteration cannot reuse the attack".to_string(),
+        });
     }
 
     let head_sha = git_rev_parse(&project, "HEAD")?;
@@ -256,9 +314,9 @@ fn finalize(args: FinalizeArgs) -> Result<()> {
         schema: "autobuilder.reviewer_agent_receipt.v1",
         head_sha: parsed.head_sha,
         intent_card_sha: parsed.intent_card_sha,
-        decision: parsed.decision.clone(),
+        decision: effective_decision,
         block_reasons: parsed.block_reasons,
-        concern_reasons: parsed.concern_reasons,
+        concern_reasons: downgrade_concerns,
         falsification: parsed.falsification,
         captured_at: receipt::now_rfc3339()?,
         receipt_digest: String::new(),

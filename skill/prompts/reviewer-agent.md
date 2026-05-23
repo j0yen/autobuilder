@@ -77,11 +77,16 @@ If you skip falsification ("looks good"), your receipt is invalid. The risk gate
     "public_api_audit": "<one paragraph: can a safe caller misuse the API?>",
     "deps_audit": "<one paragraph: dep changes since baseline and their provenance>",
     "drift_audit": "<one paragraph: changes since first-green and their justification>",
-    "counter_attack": "<one paragraph: a plausible attack the test suite would catch>"
+    "counter_attack": {
+      "description": "<one paragraph: a plausible attack the test suite would catch>",
+      "test_skeleton": "<a real Rust #[test] fn would_break_<short-name>() body that, when added to tests/, would FAIL on the current implementation if the attack succeeds. Use `unimplemented!()` or `todo!()` for parts you can't fill in; the orchestrator will surface this skeleton to the next edit-agent iteration as a falsification target. If you genuinely cannot construct any breaking input, leave test_skeleton empty (\"\") — finalize will downgrade the receipt to concern.>"
+    }
   },
   "reviewed_at": "<ISO 8601>"
 }
 ```
+
+The `counter_attack.test_skeleton` field is what makes the counter-attack actionable rather than prose-only: it lands in the report's "follow-up tests" section, the orchestrator can hand it to the adversarial-agent's `tests/adversarial_*.rs` slot, and the next iteration sees a concrete falsification target. An empty `test_skeleton` is honest — if you can't construct an attack, you should say so, and the gate will treat the absence as a concern signal, not as a `pass`.
 
 ### ID convention for `block_reasons` and `concern_reasons[].id`
 

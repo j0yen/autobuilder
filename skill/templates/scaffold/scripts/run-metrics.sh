@@ -68,6 +68,27 @@ if [ "$AC_TOTAL" -gt 0 ]; then
   AC_PASSING=$(grep -cE '^test acceptance_[a-z0-9_]+ \.\.\. ok' target/autobuilder/test-output.txt || true)
 fi
 
+# --- Mutation testing (cargo-mutants) ---
+# Measures test-suite robustness by mutating the implementation and checking
+# whether tests catch the mutation. Surviving mutants = tests are too weak.
+# Opt-in via cargo-mutants being installed AND AUTOBUILDER_RUN_MUTANTS=1 to
+# avoid the multi-minute cost on every iteration. When skipped, the scalar
+# is null (distinct from 0 surviving — "not measured" vs "fully caught").
+MUTANTS_ALIVE="null"
+MUTANTS_TESTED="null"
+if [ "${AUTOBUILDER_RUN_MUTANTS:-0}" = "1" ] && command -v cargo-mutants >/dev/null 2>&1; then
+  echo "::gate mutants" | tee -a "$LOG"
+  MUTANTS_OUT=target/autobuilder/mutants.json
+  if cargo mutants --output target/autobuilder/mutants --json --no-shuffle 2>&1 | tee -a "$LOG"; then
+    : # success — cargo-mutants returns 0 only when all caught.
+  fi
+  # cargo-mutants writes mutants.json with {caught, missed, unviable, ...}.
+  if [ -f target/autobuilder/mutants/mutants.json ]; then
+    MUTANTS_ALIVE=$(jq -r '.missed // 0' target/autobuilder/mutants/mutants.json 2>/dev/null || echo "null")
+    MUTANTS_TESTED=$(jq -r '(.caught // 0) + (.missed // 0) + (.unviable // 0)' target/autobuilder/mutants/mutants.json 2>/dev/null || echo "null")
+  fi
+fi
+
 # --- Audit (BAD_RUST) ---
 echo "::gate audit" | tee -a "$LOG"
 AUDIT_OUT=target/autobuilder/audit.json
@@ -114,6 +135,8 @@ jq -n \
   --argjson clippy "$CLIPPY_WARNINGS" \
   --argjson blocking "$BLOCKING" \
   --argjson advisory "$ADVISORY" \
+  --argjson mutants_alive "$MUTANTS_ALIVE" \
+  --argjson mutants_tested "$MUTANTS_TESTED" \
   '{
     schema: "autobuilder.metrics.v1",
     head_sha: $head,
@@ -127,6 +150,8 @@ jq -n \
     test_coverage_pct: null,
     doc_coverage_pct: null,
     proptest_density: null,
+    mutants_alive_count: $mutants_alive,
+    mutants_tested_count: $mutants_tested,
     captured_at: $captured
   }' > "$OUT"
 

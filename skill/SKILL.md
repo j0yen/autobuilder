@@ -84,6 +84,13 @@ LOOP UNTIL all-MUST-ACs-green AND risk-gate-passes OR budget-exhausted:
   8. Advance if: all hard gates pass AND quality_score improved AND no MUST-AC regression
      Else: git reset --hard HEAD~1; status=discard
   9. Emit EvidencePack JSON for the iteration
+ 10. (Optional) Adversarial sub-step: spawn the adversarial-agent
+     (prompts/adversarial-agent.md) to write tests/adversarial_<id>.rs
+     attempting to falsify the AC against its English description, not
+     the implementation. If any adversarial test fails on the
+     implementation, downgrade verdict from advance to concern and
+     surface the failure to the next edit-agent iteration. Closes the
+     "edit-agent wrote both impl and test" tautology gap.
 ```
 
 Hard gates (all must pass to advance):
