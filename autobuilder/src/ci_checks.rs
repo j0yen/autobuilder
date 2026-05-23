@@ -8,6 +8,12 @@
 //!
 //! Missing `gh`, missing auth, or zero runs on HEAD all produce a `block`
 //! verdict — refusing to certify CI-green without evidence is the point.
+//!
+//! Exception: when the project has no `origin` remote configured (typical
+//! for greenfield scaffolds before a `git push`), there is nothing to ask
+//! GitHub about. In that case we emit `verdict=skipped` with a `skip_reason`
+//! string, mirroring the `session-trace` "tracer-unavailable" pattern.
+//! The gate counts `skipped` as passing for this receipt.
 
 use crate::receipt;
 use anyhow::{Context, Result, anyhow};
@@ -60,6 +66,12 @@ struct ReceiptDoc {
     pending_count: usize,
     runs: Vec<GhRun>,
     verdict: &'static str,
+    /// Populated only when `verdict == "skipped"`; explains the structural
+    /// reason the check could not be performed (e.g. no `origin` remote).
+    /// Omitted from serialization when None so existing pass/block receipts
+    /// stay byte-identical to today's shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    skip_reason: Option<String>,
     captured_at: String,
     receipt_digest: String,
 }
@@ -73,8 +85,15 @@ pub(crate) fn run(args: Args) -> Result<()> {
 
     let head_sha = git_rev_parse(&project, "HEAD")?;
     let repo = match args.repo {
-        Some(r) => r,
-        None => detect_repo(&project)?,
+        Some(r) => Some(r),
+        None => try_detect_repo(&project)?,
+    };
+    let Some(repo) = repo else {
+        return emit_skipped(
+            &project,
+            &head_sha,
+            "no GitHub remote configured; ci-checks cannot be performed",
+        );
     };
 
     let runs = list_runs(&args.gh, &repo, &head_sha)?;
@@ -105,6 +124,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
         pending_count: pending,
         runs,
         verdict,
+        skip_reason: None,
         captured_at: receipt::now_rfc3339()?,
         receipt_digest: String::new(),
     };
@@ -128,6 +148,34 @@ pub(crate) fn run(args: Args) -> Result<()> {
     }
 }
 
+/// Emit a `verdict=skipped` ci-checks receipt and return Ok.
+///
+/// Used when the project has no `origin` remote and the caller did not
+/// pass `--repo` — we have nothing to ask GitHub about, but the gate still
+/// needs a digest-bound receipt so the 8-receipt walk stays
+/// structurally complete.
+fn emit_skipped(project: &Path, head_sha: &str, reason: &str) -> Result<()> {
+    let doc = ReceiptDoc {
+        schema: "autobuilder.ci_checks_receipt.v1",
+        head_sha: head_sha.to_owned(),
+        repo: String::new(),
+        run_count: 0,
+        success_count: 0,
+        failure_count: 0,
+        pending_count: 0,
+        runs: Vec::new(),
+        verdict: "skipped",
+        skip_reason: Some(reason.to_owned()),
+        captured_at: receipt::now_rfc3339()?,
+        receipt_digest: String::new(),
+    };
+    let value = serde_json::to_value(&doc)?;
+    let receipt_path = project.join("target/autobuilder/receipts/ci-checks.json");
+    receipt::write(&receipt_path, value)?;
+    println!("ci-checks: head={head_sha} verdict=skipped reason={reason:?}");
+    Ok(())
+}
+
 fn git_rev_parse(project: &Path, refname: &str) -> Result<String> {
     let output = Command::new("git")
         .arg("-C")
@@ -144,7 +192,14 @@ fn git_rev_parse(project: &Path, refname: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
-fn detect_repo(project: &Path) -> Result<String> {
+/// Try to detect `owner/name` from the project's `origin` remote.
+///
+/// Returns:
+/// - `Ok(Some(repo))` when the remote is configured and parseable.
+/// - `Ok(None)` when the remote is unset — the caller should emit a
+///   skipped receipt rather than failing.
+/// - `Err(_)` for other I/O failures (git binary missing, etc.).
+fn try_detect_repo(project: &Path) -> Result<Option<String>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(project)
@@ -152,12 +207,13 @@ fn detect_repo(project: &Path) -> Result<String> {
         .output()
         .context("failed to spawn git remote get-url origin")?;
     if !output.status.success() {
-        return Err(anyhow!(
-            "no `origin` remote configured; pass --repo owner/name explicitly"
-        ));
+        // git exits non-zero when the remote is missing. Treat this as a
+        // structural skip, not an error — the caller emits a skipped receipt.
+        return Ok(None);
     }
     let url = String::from_utf8_lossy(&output.stdout).trim().to_owned();
     parse_owner_name(&url)
+        .map(Some)
         .ok_or_else(|| anyhow!("could not parse owner/name from origin URL {url}"))
 }
 

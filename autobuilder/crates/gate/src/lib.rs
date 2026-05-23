@@ -100,7 +100,12 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         file_name: ReceiptPath::Static("ci-checks.json"),
         expected_schema: "autobuilder.ci_checks_receipt.v1",
         requires_head_match: true,
-        pass_verdicts: &["pass"],
+        // `pass` = workflow runs found on HEAD, all conclusion=success.
+        // `skipped` = the project has no GitHub remote configured (typical
+        // for greenfield scaffolds before a `git push`); ci-checks emits a
+        // digest-bound skipped receipt so the gate stays structurally
+        // complete on local-only projects.
+        pass_verdicts: &["pass", "skipped"],
     },
     ReceiptSpec {
         name: "session-trace",
