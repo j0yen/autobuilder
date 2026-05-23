@@ -123,7 +123,11 @@ Missing receipts → block + machine-readable diagnostic. No self-approval.
 
 `target/autobuilder/postmortem.md` summarizes the run. A run-level `evolution-proposal.json` queues in `~/.claude/skills/autobuilder/proposals/`. `autobuilder evolve` aggregates across the last K runs and emits a diff against `SKILL.md` / `rules/bad-rust.md` / `templates/scaffold/`.
 
-**Auto-apply (default).** Each suggestion is append-only by construction. `evolve` writes the appended lines to the target file in the skill tree, commits the change in the skill_root git repo when present (one commit per suggestion, message `evolve: <rationale>`), and records `applied-suggestion:<sha256-of-target-and-appended-lines>` in `proposals/applied.log` so the same suggestion does not re-emit on subsequent runs. Use `evolve --dry-run` to inspect without applying — falls back to the historic review-only mode.
+**Auto-apply (default).** Each `Suggestion` is append-only by construction. `evolve` writes the appended lines to the target file in the skill tree, commits the change in the skill_root git repo when present (one commit per suggestion, message `evolve: <rationale>`), and records `applied-suggestion:<sha256-of-target-and-appended-lines>` in `proposals/applied.log` so the same suggestion does not re-emit on subsequent runs.
+
+**Template-drift auto-apply (pure-additions only).** Postmortem captures `template_diffs` for every project script that has diverged from `templates/scaffold/scripts/*`. When the same diff body appears across ≥2 distinct slugs, evolve groups them and inspects the diff direction: a pure-additions diff (no `-` lines in hunk bodies) unambiguously means projects added content the template lacks → promoted to a `PatchSuggestion` and auto-applied via `patch --dry-run` guard + `patch -p0` + git commit. Anything with `-` lines is direction-ambiguous and surfaces as a `TemplateDriftAdvisory` for manual review.
+
+Use `evolve --dry-run` to inspect both suggestion types without applying.
 
 **Manual rejection still supported.** Add a basename to `applied.log` with a `#REJECTED:` comment block (existing convention) to suppress the source proposal entirely. Use this for suggestions whose underlying issue should be resolved elsewhere rather than by appending to the skill.
 

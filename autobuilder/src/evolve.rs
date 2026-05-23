@@ -88,18 +88,22 @@ enum ApplyOutcome {
     SkippedDuplicate,
     SkippedDryRun,
     SkippedMissingTarget,
+    /// PatchSuggestion-specific: `patch --dry-run -p0` reported the
+    /// hunk does not apply cleanly (target file diverged from what the
+    /// proposing project captured).
+    SkippedPatchDryRunFailed,
 }
 
 type DriftKey = (String, String);
 type DriftValue = (BTreeSet<String>, String);
 
 /// Template-drift advisory: emitted when the same `(path, diff_sha256)`
-/// pair appears in proposals from ≥2 distinct slugs, indicating multiple
-/// projects had to apply the same patch to a templated script. The fix
-/// is to update the template — but that's an in-line edit, not append-only,
-/// so we surface advisories for manual review instead of auto-applying.
-/// Phase C of the template-drift work would extend the apply path to
-/// handle this safely (`patch --dry-run` guard + git commit).
+/// pair appears in proposals from ≥2 distinct slugs but the diff is NOT
+/// pure-additions (it contains `-` lines, indicating projects removed
+/// something the template has — direction ambiguous). Surfaced for
+/// manual review only.
+///
+/// The pure-addition subset is auto-applied via [`PatchSuggestion`].
 struct TemplateDriftAdvisory {
     /// Template path that should be patched, e.g.
     /// `~/.claude/skills/autobuilder/templates/scaffold/scripts/run-metrics.sh`.
@@ -111,6 +115,62 @@ struct TemplateDriftAdvisory {
     slugs: Vec<String>,
     /// The unified diff body itself, ready to feed into `patch -p0`.
     diff_body: String,
+}
+
+/// Auto-applyable in-line patch. Distinct from [`Suggestion`] (which is
+/// strictly append-only). Promoted from a drift advisory when the diff
+/// is pure additions (every hunk body line starts with `+` or is context,
+/// no `-` lines) — that direction is unambiguously "template is missing
+/// content that ≥2 projects independently added".
+///
+/// Safety rails for the apply path:
+/// - `patch --dry-run -p0 -i <body>` must succeed first.
+/// - Each application = one git commit in `skill_root` if it is a repo.
+/// - Fingerprint = `sha256(target_path || "\n" || diff_body)`; recorded as
+///   `applied-suggestion:<hex>` in `applied.log`, same channel as Append.
+struct PatchSuggestion {
+    target: PathBuf,
+    rationale: String,
+    diff_body: String,
+    slugs: Vec<String>,
+}
+
+impl PatchSuggestion {
+    fn fingerprint(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.target.to_string_lossy().as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.diff_body.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+}
+
+/// True when every line of every hunk body is either context (starts with
+/// space) or addition (starts with `+`). The hunk header (`@@`), file
+/// header (`---`/`+++`), and the synthesized template-vs-project labels
+/// don't count — only lines inside a hunk body.
+fn is_pure_addition_diff(diff_body: &str) -> bool {
+    let mut in_hunk = false;
+    for line in diff_body.lines() {
+        if line.starts_with("@@") {
+            in_hunk = true;
+            continue;
+        }
+        if !in_hunk {
+            continue;
+        }
+        if line.starts_with("---") || line.starts_with("+++") {
+            in_hunk = false;
+            continue;
+        }
+        // Inside a hunk body: ' ' = context, '+' = addition, '-' = deletion.
+        // Empty lines (no leading char) are treated as context — diff -u
+        // emits a single newline for an empty context line.
+        if line.starts_with('-') {
+            return false;
+        }
+    }
+    true
 }
 
 #[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
@@ -141,7 +201,8 @@ pub(crate) fn run(args: Args) -> Result<()> {
     let report_path = dir.join(format!("evolve-report-{date}.md"));
     let diff_path = dir.join(format!("evolve-diff-{date}.patch"));
 
-    let (suggestions, drift_advisories) = derive_suggestions(&proposals, &skill_root);
+    let (suggestions, patch_suggestions, drift_advisories) =
+        derive_suggestions(&proposals, &skill_root);
 
     write_report(
         &report_path,
@@ -150,38 +211,49 @@ pub(crate) fn run(args: Args) -> Result<()> {
         &applied,
         &proposals,
         &suggestions,
+        &patch_suggestions,
         &drift_advisories,
     )?;
     write_diff(&diff_path, &suggestions)?;
 
-    let outcomes: Vec<(ApplyOutcome, &Suggestion)> = suggestions
+    let append_outcomes: Vec<ApplyOutcome> = suggestions
         .iter()
-        .map(|s| {
-            let outcome = apply_suggestion(s, &skill_root, &dir, &applied_suggestion_fps, args.dry_run);
-            (outcome, s)
-        })
+        .map(|s| apply_suggestion(s, &skill_root, &dir, &applied_suggestion_fps, args.dry_run))
         .collect();
-    let applied_now = outcomes
+    let patch_outcomes: Vec<ApplyOutcome> = patch_suggestions
         .iter()
-        .filter(|(o, _)| *o == ApplyOutcome::Applied)
+        .map(|p| apply_patch_suggestion(p, &skill_root, &dir, &applied_suggestion_fps, args.dry_run))
+        .collect();
+    let applied_now = append_outcomes
+        .iter()
+        .chain(&patch_outcomes)
+        .filter(|o| **o == ApplyOutcome::Applied)
         .count();
-    let skipped_dup = outcomes
+    let skipped_dup = append_outcomes
         .iter()
-        .filter(|(o, _)| *o == ApplyOutcome::SkippedDuplicate)
+        .chain(&patch_outcomes)
+        .filter(|o| **o == ApplyOutcome::SkippedDuplicate)
         .count();
-    let skipped_missing = outcomes
+    let skipped_missing = append_outcomes
         .iter()
-        .filter(|(o, _)| *o == ApplyOutcome::SkippedMissingTarget)
+        .chain(&patch_outcomes)
+        .filter(|o| **o == ApplyOutcome::SkippedMissingTarget)
+        .count();
+    let skipped_patch_failed = patch_outcomes
+        .iter()
+        .filter(|o| **o == ApplyOutcome::SkippedPatchDryRunFailed)
         .count();
 
     println!(
-        "evolve: scanned={} top={} suggestions={} applied={} skipped_duplicate={} skipped_missing_target={} drift_advisories={} report={} diff={}{}",
+        "evolve: scanned={} top={} suggestions={} patch_suggestions={} applied={} skipped_duplicate={} skipped_missing_target={} skipped_patch_dry_run_failed={} drift_advisories={} report={} diff={}{}",
         applied.len() + proposals.len(),
         proposals.len(),
         suggestions.len(),
+        patch_suggestions.len(),
         applied_now,
         skipped_dup,
         skipped_missing,
+        skipped_patch_failed,
         drift_advisories.len(),
         report_path.display(),
         diff_path.display(),
@@ -242,6 +314,90 @@ fn apply_suggestion(
     }
     git_commit_if_repo(skill_root, &s.target, &s.rationale);
     if let Err(e) = record_applied_fingerprint(proposals_dir, &fp, &s.rationale, &s.target) {
+        eprintln!("evolve: failed to update applied.log: {e}");
+    }
+    ApplyOutcome::Applied
+}
+
+/// Apply a [`PatchSuggestion`] via `patch -p0`. Safety rails:
+///
+/// 1. `--dry-run` must succeed first; if it doesn't (target file diverged
+///    or hunk fuzz-fails), skip and report.
+/// 2. Fingerprint check against `applied.log`, same channel as Append.
+/// 3. Target must exist on disk.
+/// 4. Each success = one git commit in `skill_root` if it's a repo.
+///
+/// The diff body is written to a temp file under `proposals_dir` so we
+/// can hand a path to `patch`. We delete it on success and leave it on
+/// failure (for diagnosis).
+fn apply_patch_suggestion(
+    p: &PatchSuggestion,
+    skill_root: &Path,
+    proposals_dir: &Path,
+    already_applied: &HashSet<String>,
+    dry_run: bool,
+) -> ApplyOutcome {
+    if dry_run {
+        return ApplyOutcome::SkippedDryRun;
+    }
+    let fp = p.fingerprint();
+    if already_applied.contains(&fp) {
+        return ApplyOutcome::SkippedDuplicate;
+    }
+    if !p.target.exists() {
+        eprintln!(
+            "evolve: skipping patch suggestion (target missing): {}",
+            p.target.display()
+        );
+        return ApplyOutcome::SkippedMissingTarget;
+    }
+    // Write diff to a temp file for `patch` to consume. Tagged with the
+    // first 16 chars of the fingerprint so concurrent runs don't collide.
+    let short = &fp[..16];
+    let patch_path = proposals_dir.join(format!("evolve-patch-{short}.diff"));
+    if let Err(e) = fs::write(&patch_path, &p.diff_body) {
+        eprintln!("evolve: cannot write temp patch {}: {e}", patch_path.display());
+        return ApplyOutcome::SkippedMissingTarget;
+    }
+    // --dry-run guard: must succeed before we touch the target for real.
+    let dry = Command::new("patch")
+        .arg("-p0")
+        .arg("--dry-run")
+        .arg("--forward")
+        .arg("--input")
+        .arg(&patch_path)
+        .arg(&p.target)
+        .output();
+    let dry_ok = matches!(&dry, Ok(o) if o.status.success());
+    if !dry_ok {
+        if let Ok(o) = &dry {
+            eprintln!(
+                "evolve: patch --dry-run failed for {}: {}",
+                p.target.display(),
+                String::from_utf8_lossy(&o.stderr).trim()
+            );
+        }
+        return ApplyOutcome::SkippedPatchDryRunFailed;
+    }
+    // Real apply.
+    let apply = Command::new("patch")
+        .arg("-p0")
+        .arg("--forward")
+        .arg("--input")
+        .arg(&patch_path)
+        .arg(&p.target)
+        .output();
+    if !matches!(&apply, Ok(o) if o.status.success()) {
+        eprintln!(
+            "evolve: patch apply failed for {} after dry-run succeeded — refusing to retry",
+            p.target.display()
+        );
+        return ApplyOutcome::SkippedPatchDryRunFailed;
+    }
+    let _ = fs::remove_file(&patch_path);
+    let rationale = format!("template-drift patch: {}", p.rationale);
+    git_commit_if_repo(skill_root, &p.target, &rationale);
+    if let Err(e) = record_applied_fingerprint(proposals_dir, &fp, &rationale, &p.target) {
         eprintln!("evolve: failed to update applied.log: {e}");
     }
     ApplyOutcome::Applied
@@ -315,7 +471,7 @@ fn record_applied_fingerprint(
 fn derive_suggestions(
     proposals: &[LoadedProposal],
     skill_root: &Path,
-) -> (Vec<Suggestion>, Vec<TemplateDriftAdvisory>) {
+) -> (Vec<Suggestion>, Vec<PatchSuggestion>, Vec<TemplateDriftAdvisory>) {
     let mut out: Vec<Suggestion> = Vec::new();
     let skill_md = skill_root.join("SKILL.md");
     let bad_rust = skill_root.join("rules/bad-rust.md");
@@ -599,29 +755,48 @@ fn derive_suggestions(
         });
     }
 
-    // ---- Template-drift advisories ----
-    // Same diff body in ≥2 distinct slugs → template is missing the fix.
-    // Emitted as advisories (not Suggestions) because the patch is an
-    // in-line edit, not an append, and the current auto-apply path only
-    // handles appends safely. Phase C of the template-drift work would
-    // promote these into Suggestion::Patch variants.
+    // ---- Template-drift: split into auto-applyable patches vs advisories ----
+    // Same diff body in ≥2 distinct slugs → projects diverge from template
+    // the same way. Direction matters: a diff that is pure-additions
+    // unambiguously means projects ADDED content the template lacks
+    // (= template-behind-projects, safe to apply forward). Anything with
+    // `-` lines is ambiguous — projects might have removed content the
+    // template intentionally ships, or the template might be ahead — and
+    // stays as a review-only advisory.
+    let mut patch_suggestions: Vec<PatchSuggestion> = Vec::new();
     let mut drift_advisories: Vec<TemplateDriftAdvisory> = Vec::new();
     for ((relpath, sha), (slugs, body)) in drift_groups {
         if slugs.len() < 2 {
             continue;
         }
-        drift_advisories.push(TemplateDriftAdvisory {
-            template_path: template_root.join(&relpath),
-            diff_sha256: sha,
-            slugs: slugs.into_iter().collect(),
-            diff_body: body,
-        });
+        let slugs_vec: Vec<String> = slugs.into_iter().collect();
+        let target = template_root.join(&relpath);
+        if is_pure_addition_diff(&body) {
+            patch_suggestions.push(PatchSuggestion {
+                target,
+                rationale: format!(
+                    "{} slugs ({}) independently added content to {relpath} that the template lacks; promote",
+                    slugs_vec.len(),
+                    slugs_vec.join(", ")
+                ),
+                diff_body: body,
+                slugs: slugs_vec,
+            });
+        } else {
+            drift_advisories.push(TemplateDriftAdvisory {
+                template_path: target,
+                diff_sha256: sha,
+                slugs: slugs_vec,
+                diff_body: body,
+            });
+        }
     }
 
-    (out, drift_advisories)
+    (out, patch_suggestions, drift_advisories)
 }
 
 #[allow(clippy::too_many_arguments)] // flat report-rendering call site; struct'ifying adds noise
+#[allow(clippy::too_many_lines)] // single linear renderer across all suggestion + advisory sections
 fn write_report(
     path: &Path,
     dir: &Path,
@@ -629,6 +804,7 @@ fn write_report(
     applied: &HashSet<String>,
     proposals: &[LoadedProposal],
     suggestions: &[Suggestion],
+    patch_suggestions: &[PatchSuggestion],
     drift_advisories: &[TemplateDriftAdvisory],
 ) -> Result<()> {
     let mut report = String::new();
@@ -680,9 +856,25 @@ fn write_report(
         }
         report.push_str("\nSee the companion `.patch` file for the unified-diff hunks. Apply with `patch -p0 < <file>` from the skill dir, or hand-merge after review.\n");
     }
+    if !patch_suggestions.is_empty() {
+        report.push_str(&format!(
+            "\n## Template-drift patches ({}) — auto-applyable (pure additions)\n\n≥2 distinct projects independently added the same content to a templated script. The diff is pure additions (no `-` lines in hunk bodies), so applying forward against the template adds the missing content there too — no ambiguity. Auto-apply runs `patch --dry-run -p0` as a guard, then `patch -p0`, then a git commit. Fingerprint deduped via `applied.log`.\n\n",
+            patch_suggestions.len()
+        ));
+        for (i, p) in patch_suggestions.iter().enumerate() {
+            report.push_str(&format!(
+                "{}. **{}** — {} _(slugs: {})_\n",
+                i + 1,
+                p.target.display(),
+                p.rationale,
+                p.slugs.join(", ")
+            ));
+        }
+        report.push('\n');
+    }
     if !drift_advisories.is_empty() {
         report.push_str(&format!(
-            "\n## Template-drift advisories ({}) — manual review\n\nProjects diverge from the template the same way across multiple slugs. The diff direction below is `template → project` (what a project applied beyond the template's baseline). Two interpretations to triage between:\n\n- **template is behind**: the projects' identical patch is a real fix the template is missing. Action: apply the diff to the template (reverse if needed).\n- **template is ahead**: the projects haven't been re-scaffolded since a template fix landed. Action: re-scaffold the projects or back-port the template's newer content to the projects.\n\nAdvisories are NOT auto-applied because the patch is an in-line edit, not an append, and direction-checking requires human judgment. Phase C of the template-drift work would extend the apply path with a `--patch-direction template-from-projects|projects-from-template` flag.\n\n",
+            "\n## Template-drift advisories ({}) — manual review (mixed / deletion diffs)\n\nProjects diverge from the template the same way across multiple slugs, but the diff contains `-` lines, so direction is ambiguous: projects might have removed content the template ships intentionally, or the template might be ahead and projects need re-scaffolding. Auto-apply does not handle these — read the diff and decide.\n\n",
             drift_advisories.len()
         ));
         for (i, a) in drift_advisories.iter().enumerate() {
