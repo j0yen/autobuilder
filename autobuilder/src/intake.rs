@@ -23,11 +23,20 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::receipt;
+
 #[derive(Debug, ClapArgs)]
 pub(crate) struct Args {
     /// Path to the intent-card.json to validate.
     #[arg(long)]
     pub validate: PathBuf,
+
+    /// When set, after successful validation also write the intent-card
+    /// (digest-bound) to `<project>/target/autobuilder/receipts/intake.json`
+    /// so the gate sees it without a manual `cp`. When unset, intake is
+    /// validation-only and leaves no files behind.
+    #[arg(long)]
+    pub project: Option<PathBuf>,
 }
 
 // Required top-level fields per schema.
@@ -155,6 +164,19 @@ pub(crate) fn run(args: Args) -> Result<()> {
         "intake: {} valid (slug={slug} target={target_kind} acs={ac_count})",
         args.validate.display()
     );
+
+    if let Some(project) = args.project.as_ref() {
+        let project = project
+            .canonicalize()
+            .with_context(|| format!("project path not found: {}", project.display()))?;
+        let receipt_path = project.join("target/autobuilder/receipts/intake.json");
+        receipt::write(&receipt_path, card)?;
+        println!(
+            "intake: wrote receipt to {} (digest-bound; gate-ready)",
+            receipt_path.display()
+        );
+    }
+
     Ok(())
 }
 
