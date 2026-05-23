@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# audit.sh-trace: emits ::audit-start marker for harness instrumentation
 # audit.sh — runs the BAD_RUST audit against this project.
 # READ-ONLY: the edit-agent must not modify this file.
 #
