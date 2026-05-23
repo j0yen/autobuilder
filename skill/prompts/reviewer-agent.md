@@ -66,9 +66,9 @@ If you skip falsification ("looks good"), your receipt is invalid. The risk gate
   "head_sha": "<full sha>",
   "intent_card_sha": "<sha256 of intent-card.json>",
   "decision": "pass" | "concern" | "block",
-  "block_reasons": ["<id from Block list above>", ...],
+  "block_reasons": ["<short-kebab-case-slug>", ...],
   "concern_reasons": [
-    {"id": "<id from Concern list>", "note": "<one-line specific note>"}
+    {"id": "<short-kebab-case-slug>", "note": "<one-line specific note>"}
   ],
   "falsification": {
     "test_audit": "<one paragraph: did any AC test miss a behavior?>",
@@ -82,5 +82,20 @@ If you skip falsification ("looks good"), your receipt is invalid. The risk gate
   "reviewed_at": "<ISO 8601>"
 }
 ```
+
+### ID convention for `block_reasons` and `concern_reasons[].id`
+
+Use a **short kebab-case slug that names the specific finding**, NOT the numeric ID
+from the Block/Concern lists above. The slug must be stable across runs — the same
+issue surfacing in two different projects must use the same slug, so the
+cross-slug recurring-pattern aggregation in `evolve` can detect it.
+
+Good: `install-sh-missing-errexit`, `unwrap-in-public-api`,
+`cargo-lock-modified-during-stage3`, `must-ac-failing-at-head`.
+
+Bad: `1`, `7`, `block-1`, `concern-2`, free-form prose.
+
+The numeric IDs in the Block/Concern lists are taxonomy hints for you — name the
+specific finding underneath, not the category.
 
 If `decision == "block"`, the run does not ship. The orchestrator will surface to the user. **Do not flip to `pass` because the user might want to ship anyway** — they can override the gate by writing `target/autobuilder/gate-override.json` themselves, but the receipt is yours and must be honest.
