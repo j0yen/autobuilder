@@ -8,6 +8,12 @@
 
 set -uo pipefail
 
+# The Rust toolchain lives at ~/.cargo/bin on this machine but is not on
+# the default PATH. Without this, AC6's subshell silently fails with
+# "cargo: command not found" and reports AC6=fail with no surface signal.
+# shellcheck disable=SC1091
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+
 REPO_ROOT="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$REPO_ROOT"
 
