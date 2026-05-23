@@ -133,11 +133,12 @@ pub(crate) fn run(args: Args) -> Result<()> {
     let metric_name = card.unfakeable_metric.name.clone();
     let lower_is_better = card.unfakeable_metric.lower_is_better;
 
-    // Trace session bracketing the harness spawn. If args.trace is false
-    // or the tracer can't start, this is a no-op and we never write a
-    // session-trace receipt (gate handles the "missing receipt" case
-    // separately via skipped verdict in the receipt or absence of the
-    // receipt entirely).
+    // Trace session bracketing the harness spawn. If `--trace` is unset,
+    // the tracer never starts; if it was requested but the binary is
+    // missing, start_trace returns None. Either way, we still emit a
+    // digest-bound session-trace receipt at the end (with verdict=skipped
+    // and a contextual skip_reason) so the gate's 8-receipt walk stays
+    // structurally complete on iterations that didn't opt into --trace.
     let mut trace_handle: Option<TraceHandle> = None;
     if args.trace {
         trace_handle = start_trace(&project, &args.trace_binary);
@@ -145,32 +146,28 @@ pub(crate) fn run(args: Args) -> Result<()> {
 
     let script_exit = run_harness(&project)?;
 
-    if let Some(handle) = trace_handle.take() {
+    let receipts_dir = project.join("target/autobuilder/receipts");
+    fs::create_dir_all(&receipts_dir).ok();
+    let session_trace_path = receipts_dir.join("session-trace.json");
+    let session_trace_value = if let Some(handle) = trace_handle.take() {
         let receipt = finalize_trace(handle, &project, &args, &card)?;
-        let receipts_dir = project.join("target/autobuilder/receipts");
-        fs::create_dir_all(&receipts_dir).ok();
-        let path = receipts_dir.join("session-trace.json");
-        let value = serde_json::to_value(&receipt)
-            .context("serializing session-trace receipt")?;
-        receipt::write(&path, value)
-            .with_context(|| format!("writing {}", path.display()))?;
-    } else if args.trace {
-        // ctrace was requested but never started — emit a skipped receipt
-        // so the gate sees a fresh receipt at this HEAD rather than a
-        // stale one from a previous run.
-        let receipts_dir = project.join("target/autobuilder/receipts");
-        fs::create_dir_all(&receipts_dir).ok();
+        serde_json::to_value(&receipt).context("serializing session-trace receipt")?
+    } else {
+        let skip_reason = if args.trace {
+            "tracer_unavailable: ctrace binary missing or start failed"
+        } else {
+            "--trace flag not set; session tracing skipped for this iteration"
+        };
         let receipt = session_trace_lib::skipped_receipt(
             args.head_sha.clone(),
             receipt::now_rfc3339()?,
-            "tracer_unavailable: ctrace binary missing or start failed",
+            skip_reason,
         );
-        let path = receipts_dir.join("session-trace.json");
-        let value = serde_json::to_value(&receipt)
-            .context("serializing session-trace skipped receipt")?;
-        receipt::write(&path, value)
-            .with_context(|| format!("writing {}", path.display()))?;
-    }
+        serde_json::to_value(&receipt)
+            .context("serializing session-trace skipped receipt")?
+    };
+    receipt::write(&session_trace_path, session_trace_value)
+        .with_context(|| format!("writing {}", session_trace_path.display()))?;
 
     let metrics_path = project.join("target/autobuilder/metrics.json");
     let metrics_text = fs::read_to_string(&metrics_path).with_context(|| {
