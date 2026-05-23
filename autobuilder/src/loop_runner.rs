@@ -53,6 +53,19 @@ pub(crate) struct Args {
     /// PATH; override for non-standard installs.
     #[arg(long, default_value = "ctrace")]
     pub trace_binary: String,
+
+    /// After verdict is computed and the iteration receipt is written,
+    /// prime the adversarial-agent queue by writing one
+    /// `target/autobuilder/adversarial-request-<ac>.json` packet for
+    /// every MUST-level AC. The loop binary cannot spawn Claude
+    /// subagents — the orchestrator (Claude session running the loop)
+    /// must spawn the adversarial-agent per packet and run
+    /// `autobuilder adversarial finalize` before treating the verdict
+    /// as final. When this flag is set and verdict ∈ {advance, baseline},
+    /// the printed verdict is suffixed `-provisional` to surface that
+    /// downstream finalization is pending.
+    #[arg(long, default_value_t = false)]
+    pub adversarial: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -218,13 +231,34 @@ pub(crate) fn run(args: Args) -> Result<()> {
         },
     )?;
 
+    // Prime the adversarial queue when --adversarial is set AND the
+    // iteration is provisionally green (advance or baseline). Skipping
+    // when verdict is revert/crash because there's nothing yet to attack.
+    let mut adversarial_packets_written = 0usize;
+    if args.adversarial && matches!(verdict, Verdict::Advance | Verdict::Baseline) {
+        adversarial_packets_written = crate::adversarial::write_packets(&project, None)
+            .with_context(|| "adversarial packet generation failed")?;
+    }
+
+    let verdict_str = if adversarial_packets_written > 0 {
+        format!("{}-provisional", verdict.as_str())
+    } else {
+        verdict.as_str().to_owned()
+    };
     println!(
-        "iter={} head={} {}={current_metric} verdict={}",
+        "iter={} head={} {}={current_metric} verdict={verdict_str}",
         args.iteration,
         args.head_sha,
         metric_name,
-        verdict.as_str()
     );
+    if adversarial_packets_written > 0 {
+        println!(
+            "adversarial: {adversarial_packets_written} packet(s) primed at target/autobuilder/adversarial-request-*.json. \
+             Spawn ~/.claude/skills/autobuilder/prompts/adversarial-agent.md per packet, then run \
+             `autobuilder adversarial finalize --project {} --ac <id> --input <out.rs>` before treating verdict as final.",
+            project.display()
+        );
+    }
 
     Ok(())
 }

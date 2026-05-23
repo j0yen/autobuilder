@@ -101,7 +101,34 @@ fn prepare(args: PrepareArgs) -> Result<()> {
         .project
         .canonicalize()
         .with_context(|| format!("project path not found: {}", args.project.display()))?;
-    let head_sha = git_head(&project)?;
+    let written = write_packets(&project, args.ac.as_deref())?;
+    if written == 0 {
+        return Err(anyhow!(
+            "no adversarial-request packets written (no MUST-level ACs in intent-card, or --ac filter matched nothing)"
+        ));
+    }
+    let out_dir = project.join("target/autobuilder");
+    println!(
+        "adversarial prepare: wrote {written} packet(s) to {}",
+        out_dir.display()
+    );
+    println!(
+        "Next: for each packet, spawn the adversarial subagent with:\n\
+         \x20 prompt: ~/.claude/skills/autobuilder/prompts/adversarial-agent.md\n\
+         \x20 context: target/autobuilder/adversarial-request-<ac>.json\n\
+         Then: autobuilder adversarial finalize --project <p> --ac <id> --input <subagent-output>.rs"
+    );
+    Ok(())
+}
+
+/// Write adversarial-request packets to `<project>/target/autobuilder/`.
+/// Returns the number of packets written (one per MUST AC when `only` is
+/// `None`, or one for `only` when filtered). Used by both the CLI
+/// `prepare` action and the `loop --adversarial` integration in
+/// `loop_runner` so the loop binary can prime the queue without
+/// re-implementing the packet shape.
+pub(crate) fn write_packets(project: &Path, only: Option<&str>) -> Result<usize> {
+    let head_sha = git_head(project)?;
     let intent_card_path = project.join("agent/intent-card.json");
     let intent_card_text = fs::read_to_string(&intent_card_path)
         .with_context(|| format!("missing {}", intent_card_path.display()))?;
@@ -111,10 +138,9 @@ fn prepare(args: PrepareArgs) -> Result<()> {
         .get("acceptance_criteria")
         .and_then(Value::as_array)
         .ok_or_else(|| anyhow!("intent-card.json missing acceptance_criteria array"))?;
-    let src_files = list_src_files(&project)?;
+    let src_files = list_src_files(project)?;
     let out_dir = project.join("target/autobuilder");
     fs::create_dir_all(&out_dir).ok();
-
     let captured_at = crate::receipt::now_rfc3339()?;
     let mut written = 0usize;
     for ac in acs {
@@ -123,16 +149,14 @@ fn prepare(args: PrepareArgs) -> Result<()> {
         if id.is_empty() {
             continue;
         }
-        if let Some(ref only) = args.ac {
+        if let Some(only) = only {
             if !only.eq_ignore_ascii_case(id) {
                 continue;
             }
         }
-        // Default behavior: only emit packets for MUST-level ACs. SHOULD/MAY
-        // are skipped because the adversarial-agent overhead per AC is
-        // significant and the SHOULD/MAY weakening is already explicit.
-        // --ac override emits regardless of level.
-        if args.ac.is_none() && level != "MUST" {
+        // Default: emit only for MUST. `only` override bypasses (caller
+        // explicitly asked for this AC regardless of level).
+        if only.is_none() && level != "MUST" {
             continue;
         }
         let description = ac.get("description").and_then(Value::as_str).unwrap_or("");
@@ -161,23 +185,7 @@ fn prepare(args: PrepareArgs) -> Result<()> {
             .with_context(|| format!("cannot write {}", request_path.display()))?;
         written += 1;
     }
-
-    if written == 0 {
-        return Err(anyhow!(
-            "no adversarial-request packets written (no MUST-level ACs in intent-card, or --ac filter matched nothing)"
-        ));
-    }
-    println!(
-        "adversarial prepare: wrote {written} packet(s) to {}",
-        out_dir.display()
-    );
-    println!(
-        "Next: for each packet, spawn the adversarial subagent with:\n\
-         \x20 prompt: ~/.claude/skills/autobuilder/prompts/adversarial-agent.md\n\
-         \x20 context: target/autobuilder/adversarial-request-<ac>.json\n\
-         Then: autobuilder adversarial finalize --project <p> --ac <id> --input <subagent-output>.rs"
-    );
-    Ok(())
+    Ok(written)
 }
 
 #[allow(clippy::needless_pass_by_value)] // owned `FinalizeArgs` is the clap-dispatched contract
