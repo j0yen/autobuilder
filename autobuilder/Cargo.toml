@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/evolve-safety", "crates/gate", "crates/metric-harness", "crates/receipt", "crates/session-trace"]
+members = [".", "crates/evolve-safety", "crates/extended-gates", "crates/gate", "crates/metric-harness", "crates/receipt", "crates/session-trace"]
 exclude = ["crates"]
 resolver = "2"
 

@@ -118,6 +118,123 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         // an environment limitation.
         pass_verdicts: &["pass", "skipped"],
     },
+    // ---- extended-gates: 16 additional receipts (autobuilder-extended-gates crate) ----
+    // Each ProducerSpec entry there maps 1:1 to a ReceiptSpec here. Keep
+    // these two tables in sync; the integration test
+    // `tests/acceptance_ac_x3_extended_gates_alignment.rs` asserts the
+    // count and schema strings match the producer table.
+    ReceiptSpec {
+        name: "supply-audit",
+        file_name: ReceiptPath::Static("supply-audit-receipt.json"),
+        expected_schema: "autobuilder.supply_audit_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass"],
+    },
+    ReceiptSpec {
+        name: "license-audit",
+        file_name: ReceiptPath::Static("license-audit-receipt.json"),
+        expected_schema: "autobuilder.license_audit_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass"],
+    },
+    ReceiptSpec {
+        name: "secrets-scan",
+        file_name: ReceiptPath::Static("secrets-scan-receipt.json"),
+        expected_schema: "autobuilder.secrets_scan_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass"],
+    },
+    ReceiptSpec {
+        name: "sbom",
+        file_name: ReceiptPath::Static("sbom-receipt.json"),
+        expected_schema: "autobuilder.sbom_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass"],
+    },
+    ReceiptSpec {
+        name: "determinism",
+        file_name: ReceiptPath::Static("determinism-receipt.json"),
+        expected_schema: "autobuilder.determinism_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    ReceiptSpec {
+        name: "hermetic-build",
+        file_name: ReceiptPath::Static("hermetic-build-receipt.json"),
+        expected_schema: "autobuilder.hermetic_build_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    ReceiptSpec {
+        name: "msrv-verify",
+        file_name: ReceiptPath::Static("msrv-verify-receipt.json"),
+        expected_schema: "autobuilder.msrv_verify_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    ReceiptSpec {
+        name: "binary-size",
+        file_name: ReceiptPath::Static("binary-size-receipt.json"),
+        expected_schema: "autobuilder.binary_size_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    ReceiptSpec {
+        name: "cold-build-time",
+        file_name: ReceiptPath::Static("cold-build-time-receipt.json"),
+        expected_schema: "autobuilder.cold_build_time_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    ReceiptSpec {
+        name: "bench-delta",
+        file_name: ReceiptPath::Static("bench-delta-receipt.json"),
+        expected_schema: "autobuilder.bench_delta_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    ReceiptSpec {
+        name: "semver-check",
+        file_name: ReceiptPath::Static("semver-check-receipt.json"),
+        expected_schema: "autobuilder.semver_check_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    ReceiptSpec {
+        name: "cli-surface",
+        file_name: ReceiptPath::Static("cli-surface-receipt.json"),
+        expected_schema: "autobuilder.cli_surface_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    ReceiptSpec {
+        name: "schema-compat",
+        file_name: ReceiptPath::Static("schema-compat-receipt.json"),
+        expected_schema: "autobuilder.schema_compat_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    ReceiptSpec {
+        name: "ac-traceability",
+        file_name: ReceiptPath::Static("ac-traceability-receipt.json"),
+        expected_schema: "autobuilder.ac_traceability_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass"],
+    },
+    ReceiptSpec {
+        name: "mutation-kill",
+        file_name: ReceiptPath::Static("mutation-kill-receipt.json"),
+        expected_schema: "autobuilder.mutation_kill_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    ReceiptSpec {
+        name: "flake-audit",
+        file_name: ReceiptPath::Static("flake-audit-receipt.json"),
+        expected_schema: "autobuilder.flake_audit_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
 ];
 
 /// Per-receipt observation surfaced in the release-receipt.

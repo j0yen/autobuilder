@@ -1,0 +1,111 @@
+[package]
+name = "autobuilder-extended-gates"
+version = "0.1.0"
+description = "16 receipt producers extending the autobuilder risk gate from 8 to 24 receipts: supply-chain, reproducibility, performance, API contract, test quality."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "autobuilder_extended_gates"
+path = "src/lib.rs"
+
+# 16 producer binaries. Each clap-parses --project and dispatches to the
+# matching producer module in the lib. The matching ProducerSpec entry in
+# PRODUCER_SPECS is what autobuilder-gate's RECEIPT_SPECS picks up.
+
+[[bin]]
+name = "supply-audit"
+path = "src/bin/supply_audit.rs"
+
+[[bin]]
+name = "license-audit"
+path = "src/bin/license_audit.rs"
+
+[[bin]]
+name = "secrets-scan"
+path = "src/bin/secrets_scan.rs"
+
+[[bin]]
+name = "sbom"
+path = "src/bin/sbom.rs"
+
+[[bin]]
+name = "determinism"
+path = "src/bin/determinism.rs"
+
+[[bin]]
+name = "hermetic-build"
+path = "src/bin/hermetic_build.rs"
+
+[[bin]]
+name = "msrv-verify"
+path = "src/bin/msrv_verify.rs"
+
+[[bin]]
+name = "binary-size"
+path = "src/bin/binary_size.rs"
+
+[[bin]]
+name = "cold-build-time"
+path = "src/bin/cold_build_time.rs"
+
+[[bin]]
+name = "bench-delta"
+path = "src/bin/bench_delta.rs"
+
+[[bin]]
+name = "semver-check"
+path = "src/bin/semver_check.rs"
+
+[[bin]]
+name = "cli-surface"
+path = "src/bin/cli_surface.rs"
+
+[[bin]]
+name = "schema-compat"
+path = "src/bin/schema_compat.rs"
+
+[[bin]]
+name = "ac-traceability"
+path = "src/bin/ac_traceability.rs"
+
+[[bin]]
+name = "mutation-kill"
+path = "src/bin/mutation_kill.rs"
+
+[[bin]]
+name = "flake-audit"
+path = "src/bin/flake_audit.rs"
+
+[dependencies]
+# Common: error handling, CLI, JSON, hashing.
+anyhow = "1"
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+# Producer-specific deps:
+# - regex: secrets-scan pattern set + ac-traceability AC-id matching
+# - toml: parse Cargo.lock (sbom, license-audit, supply-audit), parse vendored RUSTSEC TOMLs
+# - syn: semver-check pub-API diff, mutation-kill operator scan
+# - walkdir: secrets-scan + ac-traceability + license-audit file traversal
+regex = "1"
+toml = "0.8"
+syn = { version = "2", features = ["full", "visit", "extra-traits"] }
+walkdir = "2"
+# Used by mutation-kill to materialize a mutant copy of the project tree.
+tempfile = "3"
+# Reuse receipt primitives (digest-binding, RFC3339).
+autobuilder-receipt = { path = "../receipt" }
+
+[dev-dependencies]
+tempfile = "3"
+# AC-X3 integration test asserts gate's RECEIPT_SPECS lines up with our PRODUCER_SPECS.
+autobuilder-gate = { path = "../gate" }
