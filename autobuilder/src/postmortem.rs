@@ -181,7 +181,13 @@ pub(crate) fn run(args: Args) -> Result<()> {
         &notes,
     )?;
 
-    let audit_summary = read_audit_summary(&receipts_dir.join("risk-gate.json"));
+    // Prefer the finalized risk-gate receipt (digest-bound, schema-validated);
+    // fall back to the raw audit.json a project's scripts/audit.sh emits.
+    // Recall hit the missing-receipt path mid-iteration; the raw file has the
+    // same schema and shape, so this fallback closes the audit-blind window
+    // before the gate has been run.
+    let audit_summary = read_audit_summary(&receipts_dir.join("risk-gate.json"))
+        .or_else(|| read_audit_summary(&project.join("target/autobuilder/audit.json")));
     let reviewer_summary = read_reviewer_summary(&receipts_dir.join("reviewer-agent.json"));
     let skill_root = expand_tilde(&args.skill_root);
     let template_diffs = compute_template_diffs(&project, &skill_root);

@@ -318,14 +318,38 @@ check_changed_paths_have_targeted_tests() {
 check_input_boundary_tests() {
   # Look for stdin/argv/env::var/fs::read usage in src/, ensure a test file
   # mentions the same boundary keyword.
+  #
+  # Severity scoping (added after iter-1 of session-trace-receipt hit a
+  # false-positive verdict=crash):
+  #
+  #   - When the ONLY boundary use is inside a small src/main.rs (<30
+  #     lines), this almost always means "the CLI is a stub that just
+  #     parses --version, the real surface is in src/lib.rs and tests
+  #     call the lib directly." Emit as ADVISORY, not BLOCKING — the
+  #     edit-agent will wire the CLI later and the test will follow.
+  #   - When the boundary use is in src/lib.rs (or in a non-trivial
+  #     main.rs), keep the BLOCKING severity — that's a real test gap.
   local boundaries='(stdin|args\(\)|env::var|fs::read|fs::write|TcpListener|UdpSocket)'
   local src_uses
   src_uses=$(grep -rE "$boundaries" src/ 2>/dev/null | wc -l || true)
   local test_uses
   test_uses=$(grep -rE "$boundaries" tests/ 2>/dev/null | wc -l || true)
   if [ "${src_uses:-0}" -gt 0 ] && [ "${test_uses:-0}" -eq 0 ]; then
-    emit_finding "HLT-023-INPUT-BOUNDARY-GAP" "check_input_boundary_tests" "blocking" "tests/" "0" "" \
-      "src/ uses an input boundary but no tests/ exercises it"
+    local lib_uses=0
+    if [ -f src/lib.rs ]; then
+      lib_uses=$(grep -cE "$boundaries" src/lib.rs 2>/dev/null || echo 0)
+    fi
+    local main_lines=0
+    if [ -f src/main.rs ]; then
+      main_lines=$(wc -l < src/main.rs 2>/dev/null || echo 0)
+    fi
+    local severity="blocking"
+    local note="src/ uses an input boundary but no tests/ exercises it"
+    if [ "${lib_uses:-0}" -eq 0 ] && [ "${main_lines:-0}" -lt 30 ]; then
+      severity="advisory"
+      note="src/main.rs uses an input boundary but is small (<30 lines, likely a CLI stub); tests call lib directly. Wire a CLI integration test when the binary has a real surface."
+    fi
+    emit_finding "HLT-023-INPUT-BOUNDARY-GAP" "check_input_boundary_tests" "$severity" "tests/" "0" "" "$note"
   fi
 }
 

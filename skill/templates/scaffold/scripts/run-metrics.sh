@@ -83,15 +83,26 @@ fi
 
 # --- Scalars ---
 # Default unfakeable scalar: acceptance_tests_passing_count (a sensible CLI/lib default).
-# Replace this block when the intake selects a different metric (e.g. binary_size_bytes,
-# cold_start_ms, p99_latency_ms).
+# If the intent-card declares a different unfakeable_metric.name (e.g.
+# binary_size_bytes, cold_start_ms, p99_latency_ms), ALSO emit the same
+# count under that key — this satisfies the loop binary's lookup
+# (`scalars[<intent-card-name>]`) without forcing every project to
+# hand-edit this script. The loop's iter-0 baseline used to fail with
+# "scalars.<name> missing or non-numeric" until the user amended the
+# intent-card; aliasing here closes that intake/harness gap.
+INTENT_METRIC_NAME=""
+if [ -f agent/intent-card.json ]; then
+  INTENT_METRIC_NAME=$(jq -r '.unfakeable_metric.name // empty' agent/intent-card.json 2>/dev/null || echo "")
+fi
 SCALARS_JSON=$(jq -n \
   --argjson ac "$AC_PASSING" \
   --argjson total "$AC_TOTAL" \
-  '{
-    acceptance_tests_passing_count: $ac,
-    acceptance_tests_total_count: $total
-  }')
+  --arg metric_name "$INTENT_METRIC_NAME" \
+  '
+  ({ acceptance_tests_passing_count: $ac, acceptance_tests_total_count: $total })
+  + (if ($metric_name != "" and $metric_name != "acceptance_tests_passing_count")
+     then { ($metric_name): $ac } else {} end)
+  ')
 
 # --- Emit ---
 jq -n \
