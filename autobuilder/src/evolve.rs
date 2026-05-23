@@ -22,9 +22,9 @@
 
 use crate::receipt;
 use anyhow::{Context, Result, anyhow};
+use autobuilder_evolve_safety as safety;
 use clap::Args as ClapArgs;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -70,15 +70,12 @@ impl Suggestion {
     /// Stable fingerprint over `(target, appended_lines)`. Used to dedupe
     /// suggestions across evolve runs: once a fingerprint lands in
     /// `applied.log`, the same suggestion is silently skipped.
+    ///
+    /// Delegates to `autobuilder_evolve_safety::append_fingerprint`, which
+    /// owns the load-bearing sha256 algorithm under its own adversarial
+    /// AC suite (see `crates/evolve-safety/tests/`).
     fn fingerprint(&self) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(self.target.to_string_lossy().as_bytes());
-        hasher.update(b"\n");
-        for line in &self.appended_lines {
-            hasher.update(line.as_bytes());
-            hasher.update(b"\n");
-        }
-        format!("{:x}", hasher.finalize())
+        safety::append_fingerprint(&self.target, &self.appended_lines)
     }
 }
 
@@ -136,41 +133,22 @@ struct PatchSuggestion {
 }
 
 impl PatchSuggestion {
+    /// Stable fingerprint over `(target, diff_body)`. Delegates to
+    /// `autobuilder_evolve_safety::patch_fingerprint`, which owns the
+    /// load-bearing sha256 algorithm under its own adversarial AC suite.
     fn fingerprint(&self) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(self.target.to_string_lossy().as_bytes());
-        hasher.update(b"\n");
-        hasher.update(self.diff_body.as_bytes());
-        format!("{:x}", hasher.finalize())
+        safety::patch_fingerprint(&self.target, &self.diff_body)
     }
 }
 
 /// True when every line of every hunk body is either context (starts with
-/// space) or addition (starts with `+`). The hunk header (`@@`), file
-/// header (`---`/`+++`), and the synthesized template-vs-project labels
-/// don't count — only lines inside a hunk body.
+/// space) or addition (starts with `+`).
+///
+/// Delegates to `autobuilder_evolve_safety::is_pure_addition_diff`, which
+/// owns the load-bearing decision under proptest coverage. A bug here is
+/// a destructive-edit vulnerability — see `crates/evolve-safety/`.
 fn is_pure_addition_diff(diff_body: &str) -> bool {
-    let mut in_hunk = false;
-    for line in diff_body.lines() {
-        if line.starts_with("@@") {
-            in_hunk = true;
-            continue;
-        }
-        if !in_hunk {
-            continue;
-        }
-        if line.starts_with("---") || line.starts_with("+++") {
-            in_hunk = false;
-            continue;
-        }
-        // Inside a hunk body: ' ' = context, '+' = addition, '-' = deletion.
-        // Empty lines (no leading char) are treated as context — diff -u
-        // emits a single newline for an empty context line.
-        if line.starts_with('-') {
-            return false;
-        }
-    }
-    true
+    safety::is_pure_addition_diff(diff_body)
 }
 
 #[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract

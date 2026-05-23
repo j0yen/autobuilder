@@ -72,6 +72,7 @@ name = "autobuilder"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "autobuilder-evolve-safety",
  "autobuilder-gate",
  "autobuilder-receipt",
  "clap",
@@ -82,6 +83,14 @@ dependencies = [
  "session-trace-receipt",
  "sha2",
  "toml",
+]
+
+[[package]]
+name = "autobuilder-evolve-safety"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "sha2",
 ]
 
 [[package]]

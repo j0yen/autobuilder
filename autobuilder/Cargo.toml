@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/gate", "crates/metric-harness", "crates/receipt", "crates/session-trace"]
+members = [".", "crates/evolve-safety", "crates/gate", "crates/metric-harness", "crates/receipt", "crates/session-trace"]
 exclude = ["crates"]
 resolver = "2"
 
@@ -64,3 +64,4 @@ regex = "1"
 session-trace-receipt = { path = "crates/session-trace" }
 autobuilder-receipt = { path = "crates/receipt" }
 autobuilder-gate = { path = "crates/gate" }
+autobuilder-evolve-safety = { path = "crates/evolve-safety" }
