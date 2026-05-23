@@ -72,6 +72,7 @@ name = "autobuilder"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "autobuilder-receipt",
  "clap",
  "globset",
  "regex",
@@ -90,6 +91,17 @@ dependencies = [
  "clap",
  "proptest",
  "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
+name = "autobuilder-receipt"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "proptest",
  "serde_json",
  "sha2",
  "tempfile",
