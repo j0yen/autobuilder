@@ -13,6 +13,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+mod adversarial;
 mod ci_checks;
 mod evolve;
 mod gate;
@@ -77,6 +78,9 @@ enum Command {
 
     /// Aggregate evolution-proposals and prepare a skill-self-diff (gated).
     Evolve(evolve::Args),
+
+    /// Prepare / finalize an adversarial-agent test slot (Stage 3 sub-step).
+    Adversarial(adversarial::Args),
 }
 
 fn main() -> Result<()> {
@@ -93,5 +97,6 @@ fn main() -> Result<()> {
         Command::CiChecks(args) => ci_checks::run(args),
         Command::Postmortem(args) => postmortem::run(args),
         Command::Evolve(args) => evolve::run(args),
+        Command::Adversarial(args) => adversarial::run(args),
     }
 }
