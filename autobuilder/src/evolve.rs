@@ -1,4 +1,4 @@
-//! Gated self-evolution aggregator.
+//! Self-evolution aggregator with default-on auto-apply.
 //!
 //! Reads `~/.claude/skills/autobuilder/proposals/evolution-proposal-*.json`,
 //! filters out proposals already applied (per `applied.log` next to them),
@@ -13,15 +13,22 @@
 //!                                            applies cleanly when the
 //!                                            target file exists.
 //!
-//! Never auto-applies. Output is for user review.
+//! Default behavior: auto-applies each suggestion to the skill tree
+//! (file append, since every suggestion is append-only by construction),
+//! commits the change in the `skill_root` git repo when present, and
+//! records an `applied-suggestion:<sha256>` line in `applied.log` so the
+//! same suggestion does not re-emit on subsequent runs. Use `--dry-run`
+//! to suppress application and fall back to review-only mode.
 
 use crate::receipt;
 use anyhow::{Context, Result, anyhow};
 use clap::Args as ClapArgs;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, ClapArgs)]
 pub(crate) struct Args {
@@ -40,6 +47,11 @@ pub(crate) struct Args {
     /// Skill root the suggested diffs target. Defaults to the local skill install.
     #[arg(long, default_value = "~/.claude/skills/autobuilder")]
     pub skill_root: String,
+
+    /// Emit report + diff but do NOT apply. Use when you want to inspect
+    /// suggestions before they land on disk. Default is auto-apply.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
 }
 
 struct LoadedProposal {
@@ -54,6 +66,30 @@ struct Suggestion {
     appended_lines: Vec<String>,
 }
 
+impl Suggestion {
+    /// Stable fingerprint over `(target, appended_lines)`. Used to dedupe
+    /// suggestions across evolve runs: once a fingerprint lands in
+    /// `applied.log`, the same suggestion is silently skipped.
+    fn fingerprint(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.target.to_string_lossy().as_bytes());
+        hasher.update(b"\n");
+        for line in &self.appended_lines {
+            hasher.update(line.as_bytes());
+            hasher.update(b"\n");
+        }
+        format!("{:x}", hasher.finalize())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApplyOutcome {
+    Applied,
+    SkippedDuplicate,
+    SkippedDryRun,
+    SkippedMissingTarget,
+}
+
 #[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
 #[allow(clippy::too_many_lines)] // single linear aggregator-then-renderer
 pub(crate) fn run(args: Args) -> Result<()> {
@@ -65,7 +101,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
         ));
     }
     let skill_root = expand_tilde(&args.skill_root);
-    let applied: HashSet<String> = load_applied_log(&dir);
+    let (applied, applied_suggestion_fps) = load_applied_log(&dir);
     let mut proposals: Vec<LoadedProposal> =
         load_proposals(&dir, args.since.as_deref(), &applied)?;
     proposals.sort_by(|a, b| {
@@ -87,14 +123,159 @@ pub(crate) fn run(args: Args) -> Result<()> {
     write_report(&report_path, &dir, args.since.as_deref(), &applied, &proposals, &suggestions)?;
     write_diff(&diff_path, &suggestions)?;
 
+    let outcomes: Vec<(ApplyOutcome, &Suggestion)> = suggestions
+        .iter()
+        .map(|s| {
+            let outcome = apply_suggestion(s, &skill_root, &dir, &applied_suggestion_fps, args.dry_run);
+            (outcome, s)
+        })
+        .collect();
+    let applied_now = outcomes
+        .iter()
+        .filter(|(o, _)| *o == ApplyOutcome::Applied)
+        .count();
+    let skipped_dup = outcomes
+        .iter()
+        .filter(|(o, _)| *o == ApplyOutcome::SkippedDuplicate)
+        .count();
+    let skipped_missing = outcomes
+        .iter()
+        .filter(|(o, _)| *o == ApplyOutcome::SkippedMissingTarget)
+        .count();
+
     println!(
-        "evolve: scanned={} top={} suggestions={} report={} diff={}",
+        "evolve: scanned={} top={} suggestions={} applied={} skipped_duplicate={} skipped_missing_target={} report={} diff={}{}",
         applied.len() + proposals.len(),
         proposals.len(),
         suggestions.len(),
+        applied_now,
+        skipped_dup,
+        skipped_missing,
         report_path.display(),
-        diff_path.display()
+        diff_path.display(),
+        if args.dry_run { " [dry-run]" } else { "" },
     );
+    Ok(())
+}
+
+/// Apply a single suggestion. Append-only by construction, so the safety
+/// rails reduce to: target must exist, fingerprint must not already be in
+/// `applied.log`, and `dry_run` must be false.
+///
+/// When applied: appends `appended_lines` to the target file (joined by `\n`
+/// with a trailing newline), commits the change in `skill_root` if it is a
+/// git repo, and records `applied-suggestion:<sha256>` in applied.log.
+fn apply_suggestion(
+    s: &Suggestion,
+    skill_root: &Path,
+    proposals_dir: &Path,
+    already_applied: &HashSet<String>,
+    dry_run: bool,
+) -> ApplyOutcome {
+    if dry_run {
+        return ApplyOutcome::SkippedDryRun;
+    }
+    let fp = s.fingerprint();
+    if already_applied.contains(&fp) {
+        return ApplyOutcome::SkippedDuplicate;
+    }
+    if !s.target.exists() {
+        eprintln!(
+            "evolve: skipping suggestion (target missing): {}",
+            s.target.display()
+        );
+        return ApplyOutcome::SkippedMissingTarget;
+    }
+    let Ok(existing) = fs::read_to_string(&s.target) else {
+        eprintln!(
+            "evolve: skipping suggestion (target unreadable): {}",
+            s.target.display()
+        );
+        return ApplyOutcome::SkippedMissingTarget;
+    };
+    let mut new_contents = existing;
+    if !new_contents.ends_with('\n') {
+        new_contents.push('\n');
+    }
+    for line in &s.appended_lines {
+        new_contents.push_str(line);
+        new_contents.push('\n');
+    }
+    if let Err(e) = fs::write(&s.target, new_contents) {
+        eprintln!(
+            "evolve: failed to write {}: {e}",
+            s.target.display()
+        );
+        return ApplyOutcome::SkippedMissingTarget;
+    }
+    git_commit_if_repo(skill_root, &s.target, &s.rationale);
+    if let Err(e) = record_applied_fingerprint(proposals_dir, &fp, &s.rationale, &s.target) {
+        eprintln!("evolve: failed to update applied.log: {e}");
+    }
+    ApplyOutcome::Applied
+}
+
+/// If `skill_root` is inside a git working tree, stage the touched file and
+/// create a commit attributing it to evolve. Silently skips if git is not
+/// available, the dir is not a working tree, or the commit step fails — a
+/// failed git commit must NOT undo the on-disk apply.
+fn git_commit_if_repo(skill_root: &Path, touched: &Path, rationale: &str) {
+    let inside = Command::new("git")
+        .arg("-C")
+        .arg(skill_root)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output();
+    let Ok(probe) = inside else {
+        return;
+    };
+    if !probe.status.success() {
+        return;
+    }
+    if String::from_utf8_lossy(&probe.stdout).trim() != "true" {
+        return;
+    }
+    // Pass the path relative to skill_root so the symlink at
+    // ~/.claude/skills/autobuilder doesn't get resolved into a different
+    // working tree by git's pathspec normalization.
+    let relative = touched
+        .strip_prefix(skill_root)
+        .unwrap_or(touched);
+    let add = Command::new("git")
+        .arg("-C")
+        .arg(skill_root)
+        .args(["add", "--"])
+        .arg(relative)
+        .output();
+    if !matches!(&add, Ok(o) if o.status.success()) {
+        return;
+    }
+    let message = format!("evolve: {rationale}");
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(skill_root)
+        .args(["commit", "-q", "-m", &message])
+        .output();
+}
+
+/// Append an `applied-suggestion:<fp>` line plus a human-readable comment
+/// block to `applied.log`. Format mirrors the existing #REJECTED convention
+/// already used in that file.
+fn record_applied_fingerprint(
+    proposals_dir: &Path,
+    fingerprint: &str,
+    rationale: &str,
+    target: &Path,
+) -> Result<()> {
+    let path = proposals_dir.join("applied.log");
+    let mut text = fs::read_to_string(&path).unwrap_or_default();
+    if !text.ends_with('\n') && !text.is_empty() {
+        text.push('\n');
+    }
+    text.push('\n');
+    text.push_str(&format!("#APPLIED: {} — {}\n", target.display(), rationale));
+    text.push_str(&format!("applied-suggestion:{fingerprint}\n"));
+    fs::write(&path, text)
+        .with_context(|| format!("cannot write {}", path.display()))?;
     Ok(())
 }
 
@@ -469,18 +650,30 @@ fn render_append_hunk(target: &Path, rationale: &str, appended: &[String]) -> St
     out
 }
 
-fn load_applied_log(dir: &Path) -> HashSet<String> {
-    let mut out: HashSet<String> = HashSet::new();
+/// Returns `(applied_proposal_basenames, applied_suggestion_fingerprints)`.
+///
+/// Lines matching `applied-suggestion:<hex>` go into the second set and
+/// suppress re-emission of suggestions whose fingerprint already landed.
+/// Every other non-comment line is treated as a proposal basename, same as
+/// before — preserves existing behavior for the manual #REJECTED pattern.
+fn load_applied_log(dir: &Path) -> (HashSet<String>, HashSet<String>) {
+    let mut proposals: HashSet<String> = HashSet::new();
+    let mut fingerprints: HashSet<String> = HashSet::new();
     let Ok(text) = fs::read_to_string(dir.join("applied.log")) else {
-        return out;
+        return (proposals, fingerprints);
     };
     for line in text.lines() {
         let trimmed = line.trim();
-        if !trimmed.is_empty() && !trimmed.starts_with('#') {
-            out.insert(trimmed.to_owned());
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(fp) = trimmed.strip_prefix("applied-suggestion:") {
+            fingerprints.insert(fp.to_owned());
+        } else {
+            proposals.insert(trimmed.to_owned());
         }
     }
-    out
+    (proposals, fingerprints)
 }
 
 fn load_proposals(

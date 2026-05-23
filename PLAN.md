@@ -22,7 +22,7 @@ All 12 subcommands of the `autobuilder` binary are implemented (no more `Err(...
 - **Stage 3 — `metric-harness`** ✓ — wrapper that runs the harness + schema-validates `target/autobuilder/metrics.json` against `autobuilder.metrics.v1` + re-emits normalized.
 - **Stage 4 — `rollback-plan` / `vti-plan` / `reviewer-agent` / `ci-checks` / `gate`** ✓ — all five producers + the walker land; autobuilder's own repo passes `gate` with verdict=pass (release receipt at `target/autobuilder/release-receipt.json`, digest-bound).
 - **Stage 5 — `postmortem`** ✓ — aggregates `results.tsv` + receipts + capsules into `postmortem.md` and queues `evolution-proposal-<slug>-<ts>.json`.
-- **Stage 5 — `evolve`** ✓ — gated aggregator over proposals; emits `evolve-report-<date>.md` + `evolve-diff-<date>.patch` (placeholder diff). Never auto-applies.
+- **Stage 5 — `evolve`** ✓ — aggregator over proposals; emits `evolve-report-<date>.md` + `evolve-diff-<date>.patch` and (default) **auto-applies** each suggestion to the skill tree, with one git commit per suggestion in the `skill_root` repo and fingerprint dedupe via `applied-suggestion:<sha256>` lines in `applied.log`. `--dry-run` falls back to review-only.
 
 Shell harness fixes applied (skill-local, outside repo):
 - `~/.claude/skills/autobuilder/rules/audit-checks.sh` no longer aborts mid-run; emits valid envelope on every code path; receipt-presence checks removed (the gate owns them).
@@ -176,7 +176,7 @@ Missing receipts → block + machine-readable diagnostic. No self-approval (jery
 After each completed PRD run:
 - `target/autobuilder/postmortem.md`: what worked, where the loop got stuck, what anti-pattern recurred, what new lint should be added, what scaffold tweak would have prevented N retries.
 - A run-level `evolution-proposal.json` queued in `~/.claude/skills/autobuilder/proposals/`.
-- The `/autobuilder --evolve` mode: aggregates proposals across the last K runs, surfaces a diff against `SKILL.md` / `rules/bad-rust.md` / `templates/scaffold/` for **user review**. Never self-applies. (This is the "improving the toolset" half of the request; making self-modification gated keeps the meta-loop honest.)
+- The `autobuilder evolve` mode: aggregates proposals across the last K runs, emits a diff against `SKILL.md` / `rules/bad-rust.md` / `templates/scaffold/`, and (default) auto-applies each suggestion to the skill tree with one git commit per suggestion. Safety rails: every suggestion is append-only by construction (the `Suggestion` type carries `appended_lines: Vec<String>` and a target path; there is no mechanism for in-line edits or deletions), target must exist on disk, and `applied-suggestion:<sha256>` fingerprints in `applied.log` prevent re-application. The reversal path is `git revert <commit>` in the `skill_root` repo. `--dry-run` falls back to the historic review-only mode for situations where pre-merge inspection is wanted.
 
 ## Skill Layout (Claude Code skill)
 
@@ -210,7 +210,7 @@ After each completed PRD run:
 │   ├── risk-gate.sh                   # checks 7 receipts
 │   ├── postmortem.sh
 │   └── evolve.sh                      # aggregates proposals
-└── proposals/                         # accumulated evolution proposals (gated, not auto-applied)
+└── proposals/                         # accumulated evolution proposals (default auto-apply via `evolve`; `--dry-run` for review-only)
 ```
 
 ## What I Vendor vs. Reference
@@ -248,7 +248,7 @@ The skill does NOT reinvent; it calls into existing skills/tooling where availab
 6. **`risk-gate.sh`** — checks 7 receipt files exist + are digest-bound to `HEAD`.
 7. **`reviewer-agent` prompt** — independent subagent that reviews `HEAD~N..HEAD` diff against `intent-card.json` and decides pass/concern/block.
 8. **`postmortem.sh`** — aggregates results.tsv + FailureCapsules + EvidencePacks into a markdown summary and an evolution proposal.
-9. **`evolve.sh`** — gated self-improvement: never auto-modifies SKILL.md; surfaces a diff for user approval.
+9. **`evolve.sh`** — default-on self-improvement: appends each derived suggestion to the targeted skill file in `skill_root`, commits via git when applicable, and dedupes via SHA-256 fingerprint of (target, appended_lines) recorded in `applied.log`. `--dry-run` reverts to review-only.
 
 ## Verification (How to Test the Built Skill)
 
@@ -284,7 +284,7 @@ The user answered the four open questions before switching Claude plans. Lock th
    - The agent wants to add a new acceptance criterion not in the intent-card
    - The agent wants to relax / waive a MUST acceptance criterion
    - The agent wants to widen `hard_constraints` (e.g., allow unsafe when intent-card said no)
-   - An evolution proposal would modify the skill itself (Stage 5 is always gated)
+   - An evolution proposal would modify the skill itself in a non-append-only way (Stage 5 auto-applies append-only suggestions by default; anything that needs to edit or delete existing skill content still requires manual review)
    Implementation: an `intent_card_amendment_request.json` written to a known path triggers a halt + user prompt. Without an amendment, the loop ships when receipts green.
 
 4. **First PRD** — **Autobuilder itself, meta.** Once the skill scaffolding exists (SKILL.md + minimum prompts + scaffold templates + a stub Rust binary), write a PRD for one of autobuilder's own Rust sub-tools and have autobuilder build it. Candidate first sub-tool: **the metric harness binary** (`autobuilder-metric-harness`) — it has a clean unfakeable contract (input: project path; output: a single normalized `metrics.json`), is small enough to fit in the v1 falsifiable loop, and once it exists, every subsequent autobuilder run uses it. This is maximally dogfooded and gives us a real signal whether the loop works before we throw external PRDs at it.

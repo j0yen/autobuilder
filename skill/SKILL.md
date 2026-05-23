@@ -121,7 +121,11 @@ Missing receipts → block + machine-readable diagnostic. No self-approval.
 
 ### Stage 5 — Postmortem & Self-Evolve
 
-`target/autobuilder/postmortem.md` summarizes the run. A run-level `evolution-proposal.json` queues in `~/.claude/skills/autobuilder/proposals/`. `/autobuilder --evolve` aggregates across the last K runs and surfaces a diff against `SKILL.md` / `rules/bad-rust.md` / `templates/scaffold/` **for user review only**. Never self-applies.
+`target/autobuilder/postmortem.md` summarizes the run. A run-level `evolution-proposal.json` queues in `~/.claude/skills/autobuilder/proposals/`. `autobuilder evolve` aggregates across the last K runs and emits a diff against `SKILL.md` / `rules/bad-rust.md` / `templates/scaffold/`.
+
+**Auto-apply (default).** Each suggestion is append-only by construction. `evolve` writes the appended lines to the target file in the skill tree, commits the change in the skill_root git repo when present (one commit per suggestion, message `evolve: <rationale>`), and records `applied-suggestion:<sha256-of-target-and-appended-lines>` in `proposals/applied.log` so the same suggestion does not re-emit on subsequent runs. Use `evolve --dry-run` to inspect without applying — falls back to the historic review-only mode.
+
+**Manual rejection still supported.** Add a basename to `applied.log` with a `#REJECTED:` comment block (existing convention) to suppress the source proposal entirely. Use this for suggestions whose underlying issue should be resolved elsewhere rather than by appending to the skill.
 
 ## Reused skills
 
