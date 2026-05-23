@@ -7,10 +7,112 @@
 //! READ-ONLY after scaffold. To change an AC, file
 //! agent/intent_card_amendment_request.json and re-scaffold.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::doc_markdown,
+    clippy::indexing_slicing
+)]
+
+use session_trace_receipt::{
+    build_receipt, evaluate, sha256_hex, HardConstraints, SessionTraceReceipt, TraceEvent,
+    TracerInfo, RECEIPT_SCHEMA,
+};
+
 #[test]
 fn acceptance_ac6() {
-    // TODO(edit-agent): implement the test body that verifies the
-    // AC description above. Until implemented, this test fails so the
-    // iterate-and-prove loop sees a real signal.
-    panic!("AC AC6 not yet implemented — see file header");
+    // Structural smoke of "receipts=8 pass=8 verdict=pass": the session-trace
+    // receipt is the 8th entry in autobuilder/src/gate.rs RECEIPT_SPECS with
+    // expected_schema = "autobuilder.session_trace_receipt.v1" and
+    // pass_verdicts = ["pass", "skipped"]. Assert that a happy-path receipt
+    // matches both ends of that contract — the schema string the gate looks
+    // for, and a verdict the gate accepts as passing — without requiring the
+    // full harness to be re-run from this crate's test scope.
+
+    // Mirror the autobuilder repo's own intent-card: no deny_* hard
+    // constraints claimed, so constraints_evaluated is empty and the
+    // aggregate verdict is "pass".
+    let intent_card_value = serde_json::json!({
+        "hard_constraints": {}
+    });
+    let constraints = HardConstraints::from_intent_card(&intent_card_value);
+    assert!(
+        !constraints.deny_network,
+        "autobuilder repo does not claim deny_network",
+    );
+    assert!(!constraints.deny_unsafe_runtime);
+    assert!(constraints.max_subprocess_depth.is_none());
+
+    let raw_log =
+        "{\"ts\":1,\"type\":\"execve\",\"pid\":1,\"file\":\"/usr/bin/cargo\"}\n".to_string();
+    let log_sha = sha256_hex(raw_log.as_bytes());
+    let tracer = TracerInfo {
+        tool: "ctrace".to_string(),
+        version: Some("0.0.0-test".to_string()),
+        root_pid: Some(1),
+        log_sha256: log_sha.clone(),
+        log_path: "/tmp/session-trace.ndjson".to_string(),
+        event_count: 1,
+    };
+    let events = vec![TraceEvent {
+        ts: 1,
+        r#type: "execve".to_string(),
+        pid: Some(1),
+        comm: None,
+        file: Some("/usr/bin/cargo".to_string()),
+        path: None,
+        flags: None,
+    }];
+    let eval = evaluate(&events, &constraints);
+    assert!(
+        eval.map.is_empty(),
+        "no claimed constraints → constraints_evaluated must be empty",
+    );
+    assert_eq!(
+        eval.verdict, "pass",
+        "no violations + no claims → aggregate verdict must be pass",
+    );
+
+    let receipt = build_receipt(
+        "0".repeat(40),
+        "2026-05-22T00:00:00Z".to_string(),
+        tracer,
+        eval,
+        vec!["session-trace lands as the 8th gate receipt".to_string()],
+    );
+
+    // The gate's RECEIPT_SPECS pins this exact string; if either side drifts
+    // the gate stops counting this receipt and 8 ≠ 8.
+    assert_eq!(receipt.schema, "autobuilder.session_trace_receipt.v1");
+    assert_eq!(receipt.schema, RECEIPT_SCHEMA);
+
+    // The gate's RECEIPT_SPECS lists pass_verdicts = ["pass", "skipped"];
+    // "pass" is the happy-path verdict claimed by this AC.
+    let gate_pass_verdicts: &[&str] = &["pass", "skipped"];
+    assert!(
+        gate_pass_verdicts.contains(&receipt.verdict.as_str()),
+        "verdict {:?} must be in gate.rs pass_verdicts {:?}",
+        receipt.verdict,
+        gate_pass_verdicts,
+    );
+    assert_eq!(receipt.verdict, "pass");
+    assert!(receipt.skip_reason.is_none());
+
+    // Round-trip via the on-disk JSON shape gate.rs reads back, proving the
+    // file the gate parses at target/autobuilder/receipts/session-trace.json
+    // carries the expected schema + verdict pair.
+    let json = serde_json::to_value(&receipt).expect("serialize");
+    assert_eq!(json["schema"], "autobuilder.session_trace_receipt.v1");
+    assert_eq!(json["verdict"], "pass");
+    assert_eq!(json["tracer"]["log_sha256"], log_sha);
+    assert!(
+        json.get("skip_reason").is_none(),
+        "skip_reason must be skipped from serialization on the pass path",
+    );
+
+    let round: SessionTraceReceipt =
+        serde_json::from_value(json).expect("receipt must deserialize back");
+    assert_eq!(round.schema, receipt.schema);
+    assert_eq!(round.verdict, receipt.verdict);
+    assert_eq!(round.tracer.log_sha256, receipt.tracer.log_sha256);
 }

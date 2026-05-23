@@ -7,10 +7,91 @@
 //! READ-ONLY after scaffold. To change an AC, file
 //! agent/intent_card_amendment_request.json and re-scaffold.
 
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::doc_markdown)]
+
+use std::io::Write as _;
+
+use session_trace_receipt::{
+    build_receipt, evaluate, parse_ndjson, tracer_info_from_log, HardConstraints, RECEIPT_SCHEMA,
+};
+use tempfile::NamedTempFile;
+
 #[test]
 fn acceptance_ac1() {
-    // TODO(edit-agent): implement the test body that verifies the
-    // AC description above. Until implemented, this test fails so the
-    // iterate-and-prove loop sees a real signal.
-    panic!("AC AC1 not yet implemented — see file header");
+    // Simulate the happy-path that `autobuilder loop --trace` produces: the
+    // ctrace tracer wrote NDJSON syscall events to a log file. Drive the
+    // exact library surface that `loop_runner::session_trace_receipt_for`
+    // consumes (see autobuilder/src/loop_runner.rs around the
+    // `tracer_info_from_log` → `parse_ndjson` → `evaluate` → `build_receipt`
+    // chain) and assert the captured log exists, is non-empty, and ingests
+    // into a non-skipped receipt.
+    let mut log = NamedTempFile::new().expect("tempfile create");
+    writeln!(
+        log,
+        r#"{{"ts":1,"type":"execve","pid":100,"file":"/usr/bin/sh"}}"#,
+    )
+    .unwrap();
+    writeln!(
+        log,
+        r#"{{"ts":2,"type":"openat","pid":100,"path":"/tmp/foo","flags":0}}"#,
+    )
+    .unwrap();
+    writeln!(
+        log,
+        r#"{{"ts":3,"type":"execve","pid":101,"file":"/usr/bin/cargo"}}"#,
+    )
+    .unwrap();
+    log.flush().unwrap();
+    let path = log.path();
+
+    assert!(path.exists(), "captured trace log file must exist on disk");
+    let meta = std::fs::metadata(path).expect("metadata");
+    assert!(
+        meta.len() > 0,
+        "captured trace log must be non-empty; got {} bytes",
+        meta.len(),
+    );
+
+    let tracer = tracer_info_from_log(path).expect("tracer_info_from_log");
+    assert_eq!(tracer.tool, "ctrace");
+    assert_eq!(
+        tracer.log_sha256.len(),
+        64,
+        "log_sha256 must be a 64-char hex digest; got {:?}",
+        tracer.log_sha256,
+    );
+    assert!(
+        tracer.log_sha256.chars().all(|c| c.is_ascii_hexdigit()),
+        "log_sha256 must be lowercase hex; got {:?}",
+        tracer.log_sha256,
+    );
+    assert_eq!(
+        tracer.event_count, 3,
+        "tracer.event_count must equal the 3 NDJSON lines written",
+    );
+    assert_eq!(tracer.log_path, path.to_string_lossy().into_owned());
+
+    let raw = std::fs::read_to_string(path).unwrap();
+    let events = parse_ndjson(&raw);
+    assert_eq!(events.len(), 3, "parse_ndjson must yield 3 events");
+    assert_eq!(u64::try_from(events.len()).unwrap(), tracer.event_count);
+
+    let receipt = build_receipt(
+        "deadbeef00000000000000000000000000000000".to_string(),
+        "2026-05-22T00:00:00Z".to_string(),
+        tracer,
+        evaluate(&events, &HardConstraints::default()),
+        Vec::new(),
+    );
+    assert_eq!(receipt.schema, RECEIPT_SCHEMA);
+    assert_ne!(
+        receipt.verdict, "skipped",
+        "captured-path receipt must not have verdict=skipped (that path is AC2)",
+    );
+    assert_eq!(
+        receipt.verdict, "pass",
+        "no claimed constraints + no observed violations must yield verdict=pass",
+    );
+    assert!(receipt.skip_reason.is_none());
+    assert_eq!(receipt.tracer.event_count, 3);
 }
