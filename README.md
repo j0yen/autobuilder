@@ -145,6 +145,15 @@ inside a Claude Code session with a PRD path:
 …and the skill drives all five stages, leaving every receipt under
 `target/autobuilder/receipts/` for human review.
 
+## Distribution / publishing
+
+When a slice passes the gate and is ready to share, the convention is to
+publish it as its own GitHub repo at `github.com/j0yen/<slug>` rather than
+import it into a monorepo. See [Stage 6 — Publish](./skill/SKILL.md#stage-6--publish-per-project-repo)
+in the skill doc for the per-slice steps. The wider ecosystem is indexed
+in [`j0yen/wintermute`'s REPOS.md](https://github.com/j0yen/wintermute/blob/master/REPOS.md);
+its `bootstrap/install.sh` clones each published slice on a fresh machine.
+
 ## License
 
 Dual-licensed under MIT OR Apache-2.0.

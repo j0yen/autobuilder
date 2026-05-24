@@ -138,6 +138,19 @@ Use `evolve --dry-run` to inspect both suggestion types without applying.
 
 **Manual rejection still supported.** Add a basename to `applied.log` with a `#REJECTED:` comment block (existing convention) to suppress the source proposal entirely. Use this for suggestions whose underlying issue should be resolved elsewhere rather than by appending to the skill.
 
+### Stage 6 — Publish (per-project repo)
+
+When the slice passes the gate and the user wants to distribute it, the slice becomes its own GitHub repo under `github.com/j0yen/<slug>` rather than being squash-imported into a monorepo. (This replaces the older "Import into `~/wintermute/`" convention; see `j0yen/wintermute`'s [`REPOS.md`](https://github.com/j0yen/wintermute/blob/master/REPOS.md) for the live index and `bootstrap/install.sh` for the bootstrap installer that picks up new repos.)
+
+Per-slice steps:
+
+1. **README + LICENSE.** Generate `README.md` from `agent/intent-card.json` (root_motivation as overview, MUST-level acceptance criteria as the AC list). Drop dual `LICENSE-MIT` + `LICENSE-APACHE` files into the repo root.
+2. **Rename branch to `main`.** The autobuilder scaffold uses `autobuilder/<slug>` as the working branch. Before publishing: delete any stale `main` (the iter-0 scaffold baseline) and rename `autobuilder/<slug>` → `main`. Skip this if you want to preserve the autobuilder branch name on GitHub.
+3. **Commit + push.** Single commit "Prep for standalone distribution: README + dual MIT/Apache-2.0 license" using the `Joe Yen <jyen.tech@gmail.com>` identity for wintermute-ecosystem repos, then `gh repo create j0yen/<slug> --public --source . --remote origin --push`.
+4. **Update wintermute's `REPOS.md`** with a one-line description and category (pipeline/runtime/memory/session/artist). The bootstrap installer will then pick up the new repo on next `install.sh` run.
+
+The autobuilder companion binary does not yet automate Stage 6; it is a manual convention. A future `autobuilder publish` subcommand may codify this.
+
 ## Reused skills
 
 - `/loop` — long-running experiment cadence.
