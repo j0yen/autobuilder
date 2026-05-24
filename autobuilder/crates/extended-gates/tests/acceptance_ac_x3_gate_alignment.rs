@@ -1,5 +1,5 @@
-//! AC-X3: `autobuilder-gate::RECEIPT_SPECS` covers all 16 extended-gates
-//! producers, taking the total from 8 to 24.
+//! AC-X3: `autobuilder-gate::RECEIPT_SPECS` covers all 17 extended-gates
+//! producers, taking the total from 8 to 25.
 //!
 //! Asserts both directions: every producer's schema string appears in
 //! `RECEIPT_SPECS`, and there are no orphan specs (claims that don't map
@@ -13,11 +13,11 @@ use autobuilder_extended_gates::PRODUCER_SPECS;
 use autobuilder_gate::{RECEIPT_SPECS, ReceiptPath};
 
 #[test]
-fn ac_x3_gate_has_24_receipts() {
+fn ac_x3_gate_has_25_receipts() {
     assert_eq!(
         RECEIPT_SPECS.len(),
-        24,
-        "expected 8 original + 16 extended = 24"
+        25,
+        "expected 8 original + 17 extended = 25"
     );
 }
 

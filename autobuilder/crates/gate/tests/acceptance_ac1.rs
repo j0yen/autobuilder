@@ -48,8 +48,8 @@ fn happy_receipt(spec: &ReceiptSpec, head_sha: &str) -> serde_json::Value {
 fn acceptance_ac1() {
     assert_eq!(
         RECEIPT_SPECS.len(),
-        24,
-        "spec table size: 8 originals + 16 extended-gates"
+        25,
+        "spec table size: 8 originals + 17 extended-gates"
     );
 
     let checks: Vec<_> = RECEIPT_SPECS
@@ -66,7 +66,7 @@ fn acceptance_ac1() {
     }
 
     let (pass, block, verdict) = aggregate(&checks);
-    assert_eq!(pass, 24);
+    assert_eq!(pass, 25);
     assert_eq!(block, 0);
     assert_eq!(verdict, "pass");
 }

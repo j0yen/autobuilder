@@ -1,0 +1,16 @@
+schema = "autobuilder.experiment_manifest.v1"
+
+[campaign]
+slug = "bad-transition-fixture"
+prd_source = "PRD.md"
+max_wall_clock_minutes = 60
+max_total_iterations = 16
+
+[edit_agent]
+model = "claude-opus-4-7"
+max_tokens_per_call = 16000
+
+[[slices]]
+id = "S1"
+intent_card = "intent-card.json"
+transition = "rebase-and-pray"

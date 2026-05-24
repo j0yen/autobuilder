@@ -1,7 +1,7 @@
 [package]
 name = "autobuilder-extended-gates"
 version = "0.1.0"
-description = "16 receipt producers extending the autobuilder risk gate from 8 to 24 receipts: supply-chain, reproducibility, performance, API contract, test quality."
+description = "17 receipt producers extending the autobuilder risk gate from 8 to 25 receipts: supply-chain, reproducibility, performance, API contract, test quality, and campaign roll-up."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -16,7 +16,7 @@ workspace = true
 name = "autobuilder_extended_gates"
 path = "src/lib.rs"
 
-# 16 producer binaries. Each clap-parses --project and dispatches to the
+# 17 producer binaries. Each clap-parses --project and dispatches to the
 # matching producer module in the lib. The matching ProducerSpec entry in
 # PRODUCER_SPECS is what autobuilder-gate's RECEIPT_SPECS picks up.
 
@@ -83,6 +83,10 @@ path = "src/bin/mutation_kill.rs"
 [[bin]]
 name = "flake-audit"
 path = "src/bin/flake_audit.rs"
+
+[[bin]]
+name = "experiment"
+path = "src/bin/experiment.rs"
 
 [dependencies]
 # Common: error handling, CLI, JSON, hashing.

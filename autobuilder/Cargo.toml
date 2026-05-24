@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/evolve-safety", "crates/extended-gates", "crates/gate", "crates/metric-harness", "crates/receipt", "crates/session-trace"]
+members = [".", "crates/edit-agent", "crates/evolve-safety", "crates/extended-gates", "crates/gate", "crates/metric-harness", "crates/receipt", "crates/session-trace"]
 exclude = ["crates"]
 resolver = "2"
 
@@ -65,3 +65,6 @@ session-trace-receipt = { path = "crates/session-trace" }
 autobuilder-receipt = { path = "crates/receipt" }
 autobuilder-gate = { path = "crates/gate" }
 autobuilder-evolve-safety = { path = "crates/evolve-safety" }
+
+[dev-dependencies]
+tempfile = "3"

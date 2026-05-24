@@ -1,0 +1,36 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "tests/fixtures/experiment_validate/PRD.md",
+  "intent_slug": "experiment-fixture",
+  "root_motivation": "Minimum-viable intent-card used only by experiment_validate tests; exists so the manifest validator can confirm the referenced card parses and passes the intake schema.",
+  "user_persona": "The experiment validator's integration tests.",
+  "unfakeable_metric": {
+    "name": "ac_passing_count",
+    "lower_is_better": false,
+    "harness_command": "scripts/run-metrics.sh",
+    "target": 1
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "A no-op fixture AC; never actually executed by autobuilder loop in these tests.",
+      "test": "tests/acceptance_ac1.rs"
+    }
+  ],
+  "scope": ["fixture-only"],
+  "non_goals": ["being-built"],
+  "hard_constraints": {
+    "rust_edition": "2024",
+    "target_kind": "cli",
+    "deny_unsafe": true
+  },
+  "five_whys_trace": [
+    {"why": 1, "q": "why fixture", "a": "to test experiment validation"},
+    {"why": 2, "q": "why minimal", "a": "to keep the AC matrix readable"},
+    {"why": 3, "q": "why one AC", "a": "non-empty rule is satisfied without padding"},
+    {"why": 4, "q": "why cli/2024", "a": "simplest target_kind + edition that passes intake"},
+    {"why": 5, "q": "why this slug", "a": "matches the slug regex without colliding with any real intent"}
+  ],
+  "created_at": "2026-05-23T12:00:00Z"
+}

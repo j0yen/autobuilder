@@ -90,6 +90,7 @@ pub fn run_producer(name: &str, project: &Path) -> Result<String> {
         "ac-traceability" => producers::ac_traceability::run(spec, &project),
         "mutation-kill" => producers::mutation_kill::run(spec, &project),
         "flake-audit" => producers::flake_audit::run(spec, &project),
+        "experiment" => producers::experiment::run(spec, &project),
         other => Err(anyhow!("producer {other} is in PRODUCER_SPECS but not wired in run_producer")),
     }
 }

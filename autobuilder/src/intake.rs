@@ -72,11 +72,17 @@ const ALLOWED_TOP: &[&str] = &[
     "ambiguities_resolved",
 ];
 
-#[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
+/// Validate an `intent-card.json` against `autobuilder.intent_card.v1`.
+///
+/// Reads + parses + runs every schema check, accumulating errors. On
+/// failure, prints each error to stderr (one per line, prefixed with a
+/// JSON pointer) and returns an `Err`. On success returns the parsed
+/// `serde_json::Value` so callers (intake's own `run()`, the experiment
+/// driver, etc.) can read fields without re-parsing.
 #[allow(clippy::too_many_lines)] // single linear schema-validation pipeline
-pub(crate) fn run(args: Args) -> Result<()> {
-    let text = fs::read_to_string(&args.validate)
-        .with_context(|| format!("missing intent-card at {}", args.validate.display()))?;
+pub(crate) fn validate_file(path: &std::path::Path) -> Result<Value> {
+    let text = fs::read_to_string(path)
+        .with_context(|| format!("missing intent-card at {}", path.display()))?;
     let card: Value = serde_json::from_str(&text).context("intent-card is not valid JSON")?;
 
     let mut errs: Vec<String> = Vec::new();
@@ -139,7 +145,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
     }
 
     if !errs.is_empty() {
-        eprintln!("intake: {} schema violation(s) in {}", errs.len(), args.validate.display());
+        eprintln!("intake: {} schema violation(s) in {}", errs.len(), path.display());
         for line in &errs {
             eprintln!("  {line}");
         }
@@ -147,6 +153,16 @@ pub(crate) fn run(args: Args) -> Result<()> {
             "intent-card failed autobuilder.intent_card.v1 validation"
         ));
     }
+
+    Ok(card)
+}
+
+#[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
+pub(crate) fn run(args: Args) -> Result<()> {
+    let card = validate_file(&args.validate)?;
+    let Some(obj) = card.as_object() else {
+        return Err(anyhow!("intent-card must be a JSON object, got {}", kind(&card)));
+    };
 
     let slug = obj
         .get("intent_slug")

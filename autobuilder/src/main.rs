@@ -16,6 +16,7 @@ use clap::{Parser, Subcommand};
 mod adversarial;
 mod ci_checks;
 mod evolve;
+mod experiment;
 mod gate;
 mod intake;
 mod loop_runner;
@@ -81,6 +82,9 @@ enum Command {
 
     /// Prepare / finalize an adversarial-agent test slot (Stage 3 sub-step).
     Adversarial(adversarial::Args),
+
+    /// Drive a multi-slice campaign from experiment.toml (Stage 2.5).
+    Experiment(experiment::Args),
 }
 
 fn main() -> Result<()> {
@@ -98,5 +102,6 @@ fn main() -> Result<()> {
         Command::Postmortem(args) => postmortem::run(args),
         Command::Evolve(args) => evolve::run(args),
         Command::Adversarial(args) => adversarial::run(args),
+        Command::Experiment(args) => experiment::run(args),
     }
 }

@@ -1,4 +1,4 @@
-//! AC-X1: all 16 producer binaries respond to `--help` with exit 0.
+//! AC-X1: all 17 producer binaries respond to `--help` with exit 0.
 //!
 //! This is the unfakeable presence check the parent
 //! `stage4_receipt_producers_callable` scalar will pick up. Runs the

@@ -1,14 +1,15 @@
-//! 16 receipt producers extending the autobuilder risk gate from 8 to 24.
+//! 17 receipt producers extending the autobuilder risk gate from 8 to 25.
 //!
 //! Each producer audits one class of failure mode the existing 8-receipt
 //! gate does not catch: supply-chain (4), reproducibility (3), performance
-//! (3), API contract (3), test quality (3). Every producer writes
+//! (3), API contract (3), test quality (3), and campaign roll-up (1).
+//! Every producer writes
 //! `target/autobuilder/receipts/<name>-receipt.json` via
 //! [`autobuilder_receipt::write`] so the digest-binding and timestamp
 //! formatting are reused, not reinvented.
 //!
 //! The [`PRODUCER_SPECS`] table is consumed by `autobuilder-gate`'s
-//! `RECEIPT_SPECS` extension to add the 16 new specs to the 8-receipt
+//! `RECEIPT_SPECS` extension to add the 17 new specs to the 8-receipt
 //! aggregator without duplicating the schema strings or pass-verdict
 //! allowlists.
 //!
@@ -137,6 +138,13 @@ pub const PRODUCER_SPECS: &[ProducerSpec] = &[
         file_name: "flake-audit-receipt.json",
         pass_verdicts: &["pass", "skipped"],
     },
+    // --- campaign roll-up (1) ---
+    ProducerSpec {
+        name: "experiment",
+        schema: "autobuilder.experiment_receipt.v1",
+        file_name: "experiment-receipt.json",
+        pass_verdicts: &["pass", "skipped"],
+    },
 ];
 
 #[cfg(test)]
@@ -145,12 +153,12 @@ mod table_tests {
     use super::PRODUCER_SPECS;
 
     #[test]
-    fn ac_x2_table_has_16_unique_entries() {
-        assert_eq!(PRODUCER_SPECS.len(), 16, "expected 16 producer specs");
+    fn ac_x2_table_has_17_unique_entries() {
+        assert_eq!(PRODUCER_SPECS.len(), 17, "expected 17 producer specs");
         let mut names: Vec<_> = PRODUCER_SPECS.iter().map(|s| s.name).collect();
         names.sort_unstable();
         names.dedup();
-        assert_eq!(names.len(), 16, "producer names must be unique");
+        assert_eq!(names.len(), 17, "producer names must be unique");
     }
 
     #[test]

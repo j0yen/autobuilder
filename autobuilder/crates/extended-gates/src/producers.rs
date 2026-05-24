@@ -24,3 +24,4 @@ pub mod schema_compat;
 pub mod ac_traceability;
 pub mod mutation_kill;
 pub mod flake_audit;
+pub mod experiment;

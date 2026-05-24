@@ -118,7 +118,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         // an environment limitation.
         pass_verdicts: &["pass", "skipped"],
     },
-    // ---- extended-gates: 16 additional receipts (autobuilder-extended-gates crate) ----
+    // ---- extended-gates: 17 additional receipts (autobuilder-extended-gates crate) ----
     // Each ProducerSpec entry there maps 1:1 to a ReceiptSpec here. Keep
     // these two tables in sync; the integration test
     // `tests/acceptance_ac_x3_extended_gates_alignment.rs` asserts the
@@ -232,6 +232,14 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "flake-audit",
         file_name: ReceiptPath::Static("flake-audit-receipt.json"),
         expected_schema: "autobuilder.flake_audit_receipt.v1",
+        requires_head_match: true,
+        pass_verdicts: &["pass", "skipped"],
+    },
+    // ---- campaign roll-up: 1 additional receipt ----
+    ReceiptSpec {
+        name: "experiment",
+        file_name: ReceiptPath::Static("experiment-receipt.json"),
+        expected_schema: "autobuilder.experiment_receipt.v1",
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
