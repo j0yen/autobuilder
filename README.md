@@ -3,7 +3,7 @@
 PRD-driven, rigorously validated Rust code generation. A Claude Code skill plus
 a companion Rust binary that turn a Product Requirements Document into a
 working Rust project through an autonomous *iterate-and-prove* loop guarded by
-a 7-receipt risk gate.
+a 25-receipt release gate.
 
 `autobuilder` is the synthesis of three opinionated takes on "how do you trust
 agent-authored software":
