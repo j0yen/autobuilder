@@ -23,8 +23,10 @@ makes advance/revert decisions, and emits FailureCapsules on crash. These are
 load-bearing for the trust model — running a shell-script fallback would
 silently degrade the receipts.
 
-Install the binary:
-    cargo install --path /home/jsy/projects/autobuilder/autobuilder
+Install the binary from a checkout of github.com/j0yen/autobuilder:
+
+    git clone --depth 1 https://github.com/j0yen/autobuilder.git
+    cargo install --path autobuilder/autobuilder
 
 Then re-run.
 EOF

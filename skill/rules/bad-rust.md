@@ -2,7 +2,7 @@
 
 Curated subset of `jankurai/docs/BAD_RUST.md` (1484 lines). This file is the source for the audit checks in `rules/audit-checks.sh` and for the BAD_RUST scan that runs as a Stage-3 hard gate.
 
-The full canonical catalog lives at `/home/jsy/projects/autobuilder/jankurai/docs/BAD_RUST.md`. Vendor here is intentionally narrow: ~8 categories, ~100 items, each chosen because it is (a) high-signal, (b) mechanically detectable, or (c) already a well-known soundness or correctness footgun.
+The full canonical catalog lives at `../../jankurai/docs/BAD_RUST.md` in any checkout of `github.com/j0yen/autobuilder`. Vendor here is intentionally narrow: ~8 categories, ~100 items, each chosen because it is (a) high-signal, (b) mechanically detectable, or (c) already a well-known soundness or correctness footgun.
 
 A finding is `BLOCKING` (hard-gate fail) unless explicitly marked `advisory:` — advisory findings surface in the EvidencePack but do not fail the gate.
 

@@ -1,7 +1,8 @@
 # autobuilder — adopted HLT-* rules
 #
 # Curated subset of jankurai's HLT-* stable rule IDs that autobuilder enforces.
-# Lifted from /home/jsy/projects/autobuilder/jankurai/agent/JANKURAI_STANDARD.md.
+# Lifted from `jankurai/agent/JANKURAI_STANDARD.md` (sibling tree in
+# github.com/j0yen/autobuilder).
 #
 # Each rule has:
 #   id      — stable identifier (do not renumber)

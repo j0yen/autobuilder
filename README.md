@@ -18,6 +18,49 @@ The full design is in [`PLAN.md`](./PLAN.md). The first PRD the skill dogfooded
 against itself — the *MCP Metadata Optimization Harness* — is in
 [`PRD-mcp-metadata-tuner.md`](./PRD-mcp-metadata-tuner.md).
 
+## Install
+
+### Skill only — `bash` + `jq` (covers Stages 1-2)
+
+One-liner — clones the skill into a temp dir, symlinks it into
+`~/.claude/skills/autobuilder/`, exits clean:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/j0yen/autobuilder/main/skill/install.sh | bash
+```
+
+Or the manual two-step:
+
+```sh
+git clone --depth 1 https://github.com/j0yen/autobuilder.git
+./autobuilder/skill/install.sh
+```
+
+Claude Code picks up the skill on the next session start.
+`/autobuilder <PRD-path>` invokes it.
+
+### Full pipeline — skill + companion binary (covers Stages 3-5)
+
+The metric harness, iterate-and-prove loop, risk gate, postmortem,
+and evolve subcommands all live in the companion Rust crate. Install:
+
+```sh
+git clone --depth 1 https://github.com/j0yen/autobuilder.git
+cd autobuilder
+./skill/install.sh
+cargo install --path autobuilder
+```
+
+The binary lands in `~/.cargo/bin/`. The skill's shell scripts shell
+out to it when present and fall back gracefully (Stage 1-2 only)
+when not.
+
+### Prerequisites
+
+- Stages 1-2: `bash`, `jq`, `git`. Claude Code for the skill itself.
+- Stages 3-5: `cargo` / `rustc 1.85+`, `cargo-deny`, `cargo-nextest`,
+  optional `cargo +nightly miri` (only when `--allow-unsafe`).
+
 ## Repository layout
 
 ```

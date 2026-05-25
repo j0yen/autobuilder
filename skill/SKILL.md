@@ -23,7 +23,7 @@ Do NOT invoke for:
 
 ## Resolved decisions (locked 2026-05-21)
 
-1. **Skill + companion Rust binary.** Skill orchestrates Claude subagents; companion binary at `/home/jsy/projects/autobuilder/autobuilder/` owns the metric harness, receipt writing, risk gate, and experiment-loop runner. Skill shells out to the binary. Binary is itself dogfooded.
+1. **Skill + companion Rust binary.** Skill orchestrates Claude subagents; the companion `autobuilder` binary (Cargo workspace at `../autobuilder/` in the repo, installed via `cargo install --path autobuilder`) owns the metric harness, receipt writing, risk gate, and experiment-loop runner. Skill shells out to the binary. Binary is itself dogfooded.
 2. **Target scope: CLIs + library crates.** `--target cli` or `--target lib`. For libs add cargo-semver-checks, docs-coverage, `cargo public-api` diff. Service/WASM/embedded → v2.
 3. **Hybrid autonomy.** Loop and risk gate run fully autonomous. Human checkpoint only when the agent wants to add/relax a MUST acceptance criterion, widen hard constraints, or modify the skill itself. Trigger via `intent_card_amendment_request.json`.
 4. **First PRD is the metric harness.** Build `autobuilder-metric-harness` (input: project path; output: normalized `metrics.json`) before throwing external PRDs at autobuilder.
@@ -192,11 +192,20 @@ The autobuilder companion binary does not yet automate Stage 6; it is a manual c
 └── proposals/                            ← accumulated evolution proposals (gated)
 ```
 
-## Reference repos (do not vendor; reference by path)
+## Reference repos (vendored in this repo as read-only context)
 
-- `/home/jsy/projects/autobuilder/autoresearch-macos/` — locked-harness loop model
-- `/home/jsy/projects/autobuilder/jankurai/` — anti-pattern catalog, HLT rule IDs, proof-lane format
-- `/home/jsy/projects/autobuilder/jeryu/` — 7-receipt gate, EvidencePack, FailureCapsule, cargo-witness/vrc/aer crates
+The autobuilder repo ships three sibling research trees as upstream
+reference material. They live alongside the skill in any checkout of
+`j0yen/autobuilder`:
+
+- `autoresearch-macos/` — locked-harness loop model
+- `jankurai/` — anti-pattern catalog, HLT rule IDs, proof-lane format
+- `jeryu/` — 7-receipt gate, EvidencePack, FailureCapsule, cargo-witness/vrc/aer crates
+
+When invoked outside a repo checkout (skill installed via curl|bash
+sparse-clone), these dirs are absent. The skill still functions for
+Stages 1-2; Stages 3-5 expect the companion binary, whose own crates
+embed the parts of these repos it depends on.
 
 ## Status
 
