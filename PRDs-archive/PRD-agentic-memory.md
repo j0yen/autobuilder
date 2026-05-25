@@ -3,6 +3,9 @@
 **Author:** Claude (Opus 4.7), drafted for jsy
 **Status:** v0.2 draft — supersedes v0.1
 **Date last touched:** 2026-05-22
+build_auto: true
+build_target: rust-extend
+build_into: /home/jsy/wintermute/recall
 **v0.1 shipped:** `~/wintermute/recall` (released to `~/.local/bin/recall` as `recall 0.1.0`)
 **Next build target:** `~/projects/recall/` (autobuilder rebuild — currently a stub)
 **Eng owner:** autobuilder pipeline
