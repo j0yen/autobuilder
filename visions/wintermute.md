@@ -1,0 +1,201 @@
+# Vision: wintermute — voice-first AI laptop companion
+
+**Authored by:** /dream (Claude Opus 4.7), with jsy
+**Created:** 2026-05-24
+**Status:** active
+**Fleet 1 drafted:** 7 PRDs (foundation)
+**Fleets 2–3:** captured as bullets; future `/dream extend wintermute`
+
+---
+
+## TL;DR
+
+A Linux laptop for someone who is completely computer-illiterate.
+Power button on → laptop greets her by name within ~15 seconds → she
+talks, it listens, it answers, it does things for her. No typing, no
+reading required. The brain is Claude (Sonnet 4.6 default); the voice
+stack is local-first with optional cloud fast-paths; the action
+surface eventually covers browser, desktop apps, mail, calendar,
+music, and the open web. Prototyped on this Arch Linux laptop under
+the `wintermute` name; she will name her own laptop later.
+
+## End-state
+
+When Fleet 1 ships:
+
+1. **Cold boot to "Hi, I'm here" greeting in ≤15 s** after a one-time
+   caregiver setup at `wintermute.local`.
+2. **Continuous conversation, no wake-word fatigue.** Microphone is
+   always live; AEC prevents her TTS from retriggering wake; she can
+   barge in mid-sentence.
+3. **Sub-2-second response latency** for short queries (wake →
+   first TTS audio).
+4. **Conversation context persists** across the day and across
+   reboots via `recall`. She can resume a thread from this morning
+   when she comes back from a nap.
+5. **Verbal-confirmation gating** for destructive actions ("you want
+   me to delete the email from your sister — say 'yes delete'").
+6. **Graceful offline behavior** when the network drops — a spoken
+   apology, not a hang.
+
+When Fleet 2 ships (action layer):
+
+7. **Browse the web by description.** "Find me a recipe for chicken
+   soup with celery."
+8. **Read what's on the screen** if a sighted helper points at it.
+9. **Mail / calendar / music** through MPRIS, IMAP/SMTP, CalDAV.
+
+When Fleet 3 ships (personalization & safety):
+
+10. **Only responds to her voice** (speaker profile), not the TV.
+11. **Emergency contact** if she asks for help.
+12. **Quiet hours**, undo, multi-user, comforting voice clone.
+
+## Architecture
+
+```
+┌───────────────────────────────────────────────────────────┐
+│  CONVERSATION   wmd: Claude API loop, prompt caching,     │
+│                 recall-backed memory, tool router         │
+├───────────────────────────────────────────────────────────┤
+│  DIALOG         wm-dialog: turn-taker, barge-in arbiter,  │
+│                 verbal-confirmation protocol              │
+├───────────────────────────────────────────────────────────┤
+│  ACTION (F2)    browser / desktop / mail / cal / music    │
+├───────────────────────────────────────────────────────────┤
+│  PERCEPTION     wm-stt (whisper.cpp + cloud fast-path)    │
+│                 wm-tts (Piper + cloud quality option)     │
+│                 screen narrate (F2)                       │
+├───────────────────────────────────────────────────────────┤
+│  AUDIO          wm-audio: mic → AEC → NS → wake           │
+│                 (microWakeWord) → VAD (Silero) → events   │
+├───────────────────────────────────────────────────────────┤
+│  PLATFORM       wm-bootstrap (one-time caregiver setup)   │
+│                 → autologin → systemd `wintermute.target` │
+│                 → wmd supervisor → audio pipeline up      │
+│                 within ~15 s of power-on                  │
+└───────────────────────────────────────────────────────────┘
+```
+
+## Foundation choices (cited per PRD)
+
+| Layer | Library | License | Why |
+|---|---|---|---|
+| Wake | **microWakeWord** (Apache-2.0) | low CPU; same engine HA Voice PE ships; pretrained "Hey Jarvis" / "Okay Nabu" / "Hey Mycroft" |
+| VAD | **Silero VAD** (MIT) | industry standard turn-end, ONNX, ~1 MB |
+| STT local | **whisper.cpp** + `whisper-rs` (MIT) | default `distil-small.en` on CPU; opt-up at runtime |
+| STT cloud | **Whisper API** | optional fast-path when network OK |
+| TTS local | **Piper** (MIT) | CPU-only, ~10× real-time, broad voice library |
+| TTS cloud | **ElevenLabs** | optional quality path |
+| AEC | **PipeWire `module-echo-cancel`** | AEC3 preferred; webrtc classic fallback |
+| NS | **NoiseTorch-ng** (GPL-3) | virtual mic source |
+| Browser (F2) | **Playwright** (Apache-2.0) | accessibility-snapshot, token-efficient |
+| Desktop a11y (F2) | **AT-SPI2** via `atspi-rs` | linux equivalent of macOS AX |
+| Desktop input (F2) | **xdotool** (laptop is X11) | reuse from `baton` |
+| Brain LLM | **Claude API** | Sonnet 4.6 default, Opus 4.7 opt-in |
+
+Reference architecture: **Home Assistant Voice Preview Edition** —
+microWakeWord + Whisper + Piper at 300–700 ms end-to-end on a Pi5.
+Proves the local stack is viable at the latency budget needed for
+natural conversation.
+
+## Reusable foundation already on this laptop
+
+- `peon-ping` (sound output; TTS designed in its own PRD-003 but
+  unbuilt — wm-tts collaborates rather than duplicates)
+- `recall` v0.4 (agentic memory; daemon mode in flight via
+  `PRD-recall-daemon.md` — wm-brain depends on it)
+- `pevent` (supervised background processes — for wmd / wm-*)
+- `agorabus` (UDS pub/sub — bus for wake / speech / dialog events)
+- `tcap`, `baton` (X11 keystroke injection — useful in Fleet 2)
+- `autobuilder` + `/build` skill (PRD → Rust pipeline, ships PRDs
+  to standalone `j0yen/<slug>` repos under `~/wintermute/`)
+
+## Fleet 1 — Foundation (drafted 2026-05-24)
+
+All seven PRDs carry `build_auto: true` (user override of the default
+`/dream` rule) so `/build` can begin ticking immediately.
+
+| # | PRD | Target | Binary | Notes |
+|---|---|---|---|---|
+| 1 | `PRD-wintermute-bootstrap.md` | rust-cli | `wm-bootstrap` | caregiver-facing one-time web setup at `wintermute.local` |
+| 2 | `PRD-wintermute-platform.md` | mixed | `wmd-init`, `wm` | autologin + systemd target + supervisor |
+| 3 | `PRD-wintermute-audio.md` | mixed | `wm-audio` | mic → AEC → NS → wake → VAD → events (merged with wake) |
+| 4 | `PRD-wintermute-stt.md` | rust-cli | `wm-stt` | whisper.cpp + optional cloud fast-path |
+| 5 | `PRD-wintermute-tts.md` | rust-cli | `wm-tts` | Piper + collaboration with peon-ping PRD-003 |
+| 6 | `PRD-wintermute-dialog.md` | rust-cli | `wm-dialog` | turn-taker, barge-in arbiter, verbal-confirm protocol |
+| 7 | `PRD-wintermute-brain.md` | rust-cli | `wmd` | Claude API loop + recall memory + tool router |
+
+**Sequencing:**
+- #1 bootstrap and #2 platform are the entry gates (no deps).
+- #3 audio gates #4-#7 (publishes the speech/wake events they consume).
+- #5 tts can land in parallel with #3 (only needs sink; useful to test #2's greeting).
+- #6 dialog and #7 brain can develop in parallel; #7 depends on
+  `recall-daemon` (`PRD-recall-daemon.md`) shipping for the sub-10 ms
+  memory path.
+
+**Risks called out by the planning pass:**
+- AEC3 build-flag on Arch's `pipewire` package — fallback to webrtc
+  classic if AEC3 missing (cancellation quality reduced but functional).
+- microWakeWord pretrained wake words only in v1 — custom training
+  is too finicky for a non-literate user's setup. The wake word is
+  configurable via bootstrap from the pretrained set.
+- Sonnet vs Opus default for the brain — Sonnet is the chatty-day
+  default; Opus is opt-in for deep questions to manage cost+latency.
+
+## Fleet 2 — Action layer (future `/dream extend wintermute`)
+
+- `wintermute-browser` — Playwright headed Chromium control
+- `wintermute-desktop` — AT-SPI tree reading + xdotool injection
+- `wintermute-screen-narrate` — AT-SPI + OCR + Claude vision
+  ("what does my screen say right now?")
+- `wintermute-mail` — IMAP/SMTP read + compose
+- `wintermute-calendar` — caldav
+- `wintermute-music` — MPRIS player control
+- `wintermute-news` — RSS + summarize-and-read
+- `wintermute-glow` — visual ambient state indicator (moved from
+  Fleet 1 — non-blocking for first-usable version)
+
+## Fleet 3 — Personalization, safety, offline (future)
+
+- `wintermute-voice-profile` — speaker adaptation (only responds to
+  her, not to TV / visitors)
+- `wintermute-voice-clone` — comforting voice clone (note XTTS v2 /
+  F5-TTS license constraints — likely personal-use-only build)
+- `wintermute-emergency` — "I'm not feeling well" → contact caregiver
+- `wintermute-quiet-hours` — sleep schedule, no proactive sound
+- `wintermute-multi-user` — distinguish her from family
+- `wintermute-undo` — verbal undo for last reversible action
+- `wintermute-offline-persona` — richer behavior when API is down
+  (cached news, music, time-telling, simple chat from a small local
+  LLM — likely its own sub-vision)
+
+## Open questions
+
+- Should `wmd-init` (the supervisor in #2) reuse `pevent` or be its
+  own minimal supervisor? Leaning reuse; `/build` can decide during
+  #2 implementation.
+- Naming for the eventual production deployment: user said "she will
+  select a name for her laptop later" — production rename is a small
+  later patch across configs.
+- Hardware target — currently CPU-only Arch (mirrors this laptop).
+  When a deployment laptop is picked, may want to add a GPU
+  variant (Parakeet TDT for streaming STT, larger TTS).
+- The "wake word for non-literate user" UX: should we eventually
+  support always-on (no wake word) with diarization to filter only
+  her voice? Fleet 3 question.
+
+## Provenance
+
+- **Seeded by:** user `/dream` invocation 2026-05-24, "I need you to
+  help build an ai-laptop like yourself…"
+- **Research:** Explore agent surveyed `~/wintermute/`, `~/.claude/`,
+  `~/brain/journal/`, archived PRDs (no prior thinking found — clean
+  slate). WebSearch for 2026 library landscape on STT/TTS/wake/AEC/
+  desktop-automation/voice-assistant reference architectures.
+- **Plan-agent critique** flagged: split orchestrator into
+  dialog+brain, merge wake/VAD into audio, cut Moonshine, switch
+  openWakeWord → microWakeWord, add the bootstrap PRD as the day-1
+  unblocker, Sonnet not Opus as default.
+- **User decisions:** codename `wintermute`, cloud-allowed audio
+  fast-path, CPU-only baseline, all 7 PRDs `build_auto: true`.
