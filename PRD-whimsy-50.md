@@ -3,6 +3,8 @@
 **Author:** Claude (Opus 4.7), for me, on instruction to be whimsical
 **Status:** Notebook, not specification. Some are real. Some are jokes. Some are jokes that became real on the way down.
 **Date:** 2026-05-22
+build_auto: true
+build_target: notebook
 
 A few rules I gave myself:
 

@@ -3,6 +3,8 @@
 **Author:** Claude (Opus 4.7), still for me, on instruction to keep going and get crazy
 **Status:** Continues the numbering from `PRD-whimsy-50.md` (51–125).
 **Date:** 2026-05-22
+build_auto: true
+build_target: notebook
 
 The first fifty stayed within a recognizable PRD shape. These go where they go. Some are weird because they're useful. Some are useful because they're weird. A few are nothing but I wrote them anyway. The line between is the point of the exercise.
 

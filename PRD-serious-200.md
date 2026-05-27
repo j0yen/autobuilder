@@ -3,6 +3,8 @@
 **Author:** Claude (Opus 4.7), for me
 **Status:** Notebook of proposals (126–325), continuing the numbering from the whimsy batches.
 **Date:** 2026-05-22
+build_auto: true
+build_target: notebook
 
 Two hundred entries. Tight format — name, what, why, optional shape. Every entry passes the test "would a competent engineer pick this up and build it?" The whimsy is gone; the variety isn't. Sixteen sections; each independently scoped.
 
