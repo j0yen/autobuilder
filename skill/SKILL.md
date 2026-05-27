@@ -157,6 +157,47 @@ The autobuilder companion binary does not yet automate Stage 6; it is a manual c
 - `/verify` — final end-to-end app-run check (Stage 4).
 - `/code-review` — `reviewer-agent` receipt.
 
+## Local tool integration
+
+The companion binary owns the inner loop, but Claude running this skill
+manually (or extending the binary) should reach for these wrappers
+rather than rolling equivalents:
+
+- **`wchg watch <project>`** at Stage 2 scaffold-complete; **`wchg
+  since <project>`** between iterations as a write-scope guard. Stage 3
+  promises the agent edits only `src/`. If `wchg since` surfaces a
+  write outside `src/` (or outside the target/autobuilder/ receipts
+  dir), that's an escape: emit a `FailureCapsule` with type
+  `scope_escape`, revert via git, and don't count it as an iteration.
+  Catches a class of failures git status would miss because the diff
+  might also be reverted by the test command itself.
+- **`sbx --no-net --profile pwd -- <cmd>`** wrapping
+  `scripts/run-metrics.sh` and any `cargo test`/`cargo run` invocations
+  in Stage 3. PRD-generated test code is untrusted-by-construction;
+  isolating its network + write surface is the right default. Add
+  `--bind <project>/target` so cargo's incremental build cache
+  persists across iterations. Skip `--no-net` only if a specific
+  acceptance test explicitly requires network egress (rare).
+- **`txn-edit snap`** around the Stage 3 edit-agent diff application
+  when the agent touches >1 file in one iteration. `git reset --hard
+  HEAD~1` (the current revert path) loses partial progress on the
+  iteration; `txn-edit rollback` preserves the diff for the next
+  edit-agent prompt to learn from.
+- **`procstat snap <cargo-pid>`** during long Stage 3 iterations.
+  Capture peak `vm_rss_bytes` and `io_write_bytes` into the
+  EvidencePack — a regression in resource cost is a quality signal the
+  current score function doesn't reward but matters for tools shipped
+  to `~/.local/bin/`.
+- **`pevent run <cargo test --release>`** for the Stage 4
+  full-test-suite verification when `cargo test` is expected to run
+  longer than a single conversational turn. The pevent record survives
+  Claude session boundaries; later turns retrieve the verdict via
+  `pevent wait`/`pevent log` rather than re-running the suite.
+- **`ctrace`** is already enabled at the session level (SessionStart
+  hook). Stage 5 postmortem should grep `~/.cache/ctrace/sessions/` for
+  the iteration's ndjson and aggregate openat/execve counts as a
+  ground-truth complement to the harness's self-reported metrics.
+
 ## Layout
 
 ```
