@@ -9,6 +9,7 @@
 build_auto: true
 build_target: rust-cli
 build_priority: high
+deferred_acs: [1, 4, 5, 6, 7, 8]
 
 ---
 
