@@ -198,6 +198,7 @@ rather than hidden in iter-log notes.
 | # | PRD | Target | Notes |
 |---|---|---|---|
 | 1 | `PRD-build-deferred-acs.md` | self-mod | `deferred_acs:` frontmatter + gate honoring + archive trailer + backfill of 4 stuck PRDs. **Drafted 2026-05-27 (pass 13).** |
+| 2 | `PRD-wintermute-hardware-smoke-convention.md` | mixed | Codify the empirical `WM_<SLUG>_HARDWARE_SMOKE` env-witness pattern that shipped wintermute-tts. Backfill `tests/hardware_acs.rs` into platform/stt/audio. Convention doc + 3 scaffolded test files; no skill or version changes. Complement, not replacement for #1: hardware-smoke handles in-Rust hardware-dep ACs (dominant wintermute case); deferred-acs handles ACs that exit Rust entirely. **Drafted 2026-05-27 (pass 15).** |
 
 **Future Fleet 1.5 (bullets — not drafted this pass):**
 

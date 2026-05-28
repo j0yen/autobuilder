@@ -1658,3 +1658,79 @@ their actual vision when they resume.
 Suggested mitigation: next /dream that touches this gossip can append
 the missing daily-receipt entry retroactively, or the sibling session
 amends in their own pass.
+
+
+## 2026-05-27T22:35  /dream  pass 15 — Fleet 1.5 expansion
+Drafted: PRD-wintermute-hardware-smoke-convention.md
+Vision: visions/wintermute.md updated (Fleet 1.5 §2 added)
+
+**Trigger:** Between pass 14 (drift, 01:55Z) and this pass, two
+wintermute Fleet 1 archives landed: wintermute-tts (32236d7,
+2026-05-28T05:27Z) and wintermute-dialog (0a2fa94, 2026-05-28T05:08Z).
+Bringing Fleet 1 to 3/7 shipped (with bootstrap). tts's archive
+trailer cites pairing AC1/3/5/7 against `tests/hardware_acs.rs` —
+`#[ignore]`-gated stubs that demand a `WM_TTS_HARDWARE_SMOKE=1`
+witness. Verified live: the file exists at
+~/wintermute/wintermute-tts/tests/hardware_acs.rs (90 lines), AC stubs
+panic with instructive messages if invoked without the env var, /build's
+check #5 accepted the pairing.
+
+Pass 13's PRD-build-deferred-acs.md proposed a `deferred_acs:`
+frontmatter mechanism for the same root issue. /build solved the tts
+case empirically with the env-witness pattern in parallel. The two
+solutions differ on whether the pairing is real (witness pattern) or
+asserted via frontmatter (deferred-acs).
+
+**What this PRD does:**
+- Documents the WM_<SLUG>_HARDWARE_SMOKE convention in a new file
+  `~/wintermute/autobuilder/notes/conventions/hardware-smoke.md`.
+- Scaffolds `tests/hardware_acs.rs` into wintermute-platform,
+  wintermute-stt, wintermute-audio matching the tts shape exactly.
+- Per-PRD AC coverage: platform AC1/2/5/8, stt AC1/2/4/6/7/8, audio
+  AC1/2/3/4/5/6/8.
+- No skill changes, no version bumps, no binary edits. Pure test +
+  docs.
+
+**Why not retire deferred-acs:**
+- Most wintermute hardware ACs are inside Rust binaries and have a
+  natural cargo-test pairing surface. Witness-gating fits.
+- ACs that exit Rust entirely (Gmail OAuth, install.sh as fresh
+  user, printer paper-out probe) have no cargo-test pairing surface.
+  deferred-acs's frontmatter is still honest for those cases.
+- The two patterns coexist; ship in any order.
+
+**Notes for /build:**
+- build_target=mixed (3 rust-extend touches + 1 doc file). Single
+  tick likely sufficient — total ~150 lines across 4 new files.
+- /build can pick this up before OR after PRD-build-deferred-acs;
+  no ordering constraint.
+- After this PRD ships, the next platform/stt/audio /build tick
+  should be able to mark check #5 as satisfied for the hardware-
+  gated ACs and proceed to archive (modulo any remaining
+  non-hardware ACs that are still genuinely failing).
+- Verify the scaffolded files compile (`cargo test --release --lib`
+  + `cargo test --release --test hardware_acs` 0 passed/N ignored
+  for each repo) before committing per-repo.
+
+**Notes for next /dream:** unblock conditions:
+- This PRD ships → check that platform/stt/audio /build ticks
+  actually advance their AC pairing (verified-completed §5
+  evidence in iter logs); if not, the gap is more subtle.
+- ≥2 wintermute Fleet 2 ships → Fleet 3 trigger remains (browser,
+  desktop, screen-narrate, mail, calendar, music — none shipped
+  yet).
+- build-deferred-acs ships → still queued; check whether /build
+  routed to deferred-acs or to the witness pattern for the next
+  non-wintermute hardware-dep PRD that appears.
+- Any of drift Fleet 1 ships (drift-fix-self-review-dream /
+  tool-manifest / skill-doctor — all still queued).
+- New user articulation.
+
+**Cross-fleet notes:**
+- No collision with cadence/chord/continuity/freshness/handshake/
+  onramp/release-gate/daily-receipt/drift visions.
+- wintermute-dialog (shipped) does NOT need backporting — its ACs
+  are software-timed (barge-in measured as event-loop wall, not
+  speaker-relative). Verified during draft research.
+- /build's iter log for wintermute-tts is the worked example;
+  /build can mirror that exactly for the three target repos.
