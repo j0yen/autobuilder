@@ -1994,3 +1994,58 @@ userspace handshake fully landed and Fleet 2 of continuity becomes
 draftable; (b) fidelity Fleet 1 reaches ≥3 of 5 shipped — Fleet 2
 (confidence-recalibrate, ranking-utility-weight) becomes evidence-
 backed; (c) new user articulation.
+
+## 2026-05-28T07:30  /dream  no-fleet-pass (state delta logged, triggers still unmet)
+
+Bare /dream 25min after 07:05Z. NINTH /dream no-fleet-pass. State delta
+since 07:05Z (small but real, all from /build motion):
+
+  - PRD-wintermute-platform archived (autobuilder commit 139f0a6 at
+    07:15Z, status: shipped, 15 ticks). Was already counted as a
+    wintermute Fleet 1 ship at 01:40Z (`fleet_2_trigger` note); archive
+    closes the bookkeeping without firing a new trigger.
+  - wintermute-brain advanced iter-19 → iter-20 (in_progress, last
+    07:22Z). CLAUDE_SELF says it shipped on GitHub today; the build
+    manifest's in_progress reflects pending archive, not pending code.
+  - `~/.cache/recall-weather/` 158 → 173 dirs in 79min (~11/hour
+    bias-accumulation rate). Steady; matches the rate fidelity Fleet 1
+    PRD #1 (recall-surfaced-tracking) is designed to instrument.
+  - /proc/self/agent_session: still 32 zeros. claude-agentns-wrap
+    queued; no progress.
+
+Triggers from 07:05Z (still unmet):
+  (a) claude-agentns-wrap ships → queued, ticks=0. UNMET.
+  (b) fidelity Fleet 1 ≥3/5 shipped → 0/5 (all queued, ticks=0). UNMET.
+  (c) new user articulation → bare /dream this pass. UNMET.
+
+Curation considered, none warranted:
+  - Inventory: 8 unattached PRDs (5 shipped+stale + 3 notebook seeds).
+    Down from 9 at 07:05Z because that pass attached agorabus-announce-
+    fix. All 8 explained per 07:05Z gossip note; no relabeling needed.
+  - `~/.claude/scripts/recall-search-inject.sh` exists as a UserPromptSubmit
+    hook with no PRD provenance (sibling to the v0.6.0 outcome-feedback
+    Stop hook). Drafting a backfill PRD now would be paperwork — it's
+    plumbing, not a new feature, and fidelity Fleet 1 #1 will instrument
+    it via the surfaced-tracking schema. Logged here for trace.
+  - dream manifest `_no_fleet_passes` array sits under `.visions` (mixed
+    object+array siblings under one key). Confused my reconcile-query
+    once this pass; the `?` operator in jq doesn't suppress the
+    "indexing array with string" error so queries need
+    `select(.value | type == "object")` first. Not a bug worth a PRD;
+    just a query-author footgun. Worth a one-line note in dream/SKILL.md
+    on the next skill edit. Not edited this pass.
+
+No PRDs drafted. Per rule 6 — don't dream past the research; rule from
+11:30Z 5/25 — if state is essentially unchanged AND no trigger fires,
+prefer skip-writes; but the platform archive + brain motion + weather
+rate are worth logging in the no-fleet-pass record so the next /dream
+sees them. Sticking with terse gossip + manifest update; no PRD churn.
+
+Notes for next /dream:
+  - Same triggers as 07:05Z: agentns-wrap ship, fidelity ≥3/5, or new
+    articulation.
+  - Watch wintermute-brain archive (status: in_progress → shipped).
+    Doesn't fire a new trigger (already counted), but closes the
+    wintermute Fleet 1 archival arc.
+  - Watch /build pickup of fidelity Fleet 1 — recall-surfaced-tracking
+    is the lead (smallest, pure data-plumbing, no deps).
