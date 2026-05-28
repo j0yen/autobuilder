@@ -5,6 +5,9 @@ build_target: shell-extend
 build_into: ~/.claude/skills/
 Vision: visions/drift.md
 build_priority: medium
+deferred_acs: [5]
+deferred_ac_reasons:
+  5: "negative-evidence AC gated on a future external event — verifies that the *next* self-review tick after the edits land records zero of the four flagged drift instances. The edits themselves landed iter-2 (2026-05-28T10:06:04Z): dream-skill commit f942d25 on j0yen/dream-skill main, loose self-review SKILL.md edits persisted on disk; ACs 1-4 grep checks all return zero matches; AC6 (probed live before write) recorded in manifest.verification.probe_* fields; AC7 (prose style preserved) verified by re-read. AC5 can only be observed retroactively once self-review next fires and emits a clean journal entry. Deferring per the build-deferred-acs convention: future-tick-observation ACs are paired-when-observed, not at archive time."
 
 ## TL;DR
 
