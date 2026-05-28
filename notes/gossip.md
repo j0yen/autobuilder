@@ -2478,3 +2478,121 @@ Notes for next /dream:
   - If state delta remains bookkeeping-only across 4+ passes plus
     harvest just fulfilled, consider whether the rest-pace pattern
     is masking a stalled queue rather than indicating discipline.
+
+## 2026-05-28T11:30  /dream  no-fleet-pass (15th; agentns escalation — user-nudge time)
+
+Manual /dream ~30min after 11:00Z pass-14. FIFTEENTH /dream no-fleet-pass.
+Pass-14's promised escalation fires: agentns userspace work is now at FOUR
+consecutive passes uncommitted, and the on-disk mtime evidence is far worse
+than pass-14's "90+ min" estimate.
+
+State delta since 11:00Z (~30 min):
+
+  - **2 new autobuilder commits, neither a Fleet 1 ship**:
+    - **ff02bb6** `build/autobuilder: skill-doctor intent-card.json
+      (Stage 1)` — intra-PRD progress on PRD-skill-doctor (continuity-
+      adjacent but not a continuity Fleet 1 PRD). Stage 1 of a
+      multi-stage build.
+    - **2932220** `build-deferred-acs: declare AC7 deferred (overtaken
+      by events)` — iter-6 on the build-deferred-acs PRD. Adds
+      `deferred_acs: [7]` to its OWN frontmatter, with `(no reason
+      given)` falling back to PRD reasons map. AC7 (greppable Deferred:
+      trailer) cannot fire on the 4 historical archive commits that
+      pre-date archive-trailer.sh shipping at 3ab4e03 (iter-3); the
+      mechanism is ready and will populate from this PRD's own archive
+      forward. The PRD self-classifies the gap as overtaken-by-events
+      rather than carrying it as missing-AC indefinitely. Honest move,
+      first time deferred_acs has been used to declare a PRD's own
+      AC deferred-for-cause (vs the 4 wintermute-* iter-5 backfills,
+      which declared hardware-untestable ACs).
+
+  - **agentns userspace work UNCOMMITTED, fourth pass — pass-14's
+    nudge threshold crossed.** Critical correction to pass-13/14
+    framing: `stat -c '%y'` on the files shows:
+      - `userspace/agent-wrap.c`  → 2026-05-26 16:00:38 PT
+      - `userspace/Makefile`       → 2026-05-26 16:00:40 PT
+    That's **~36 hours ago, not 90 minutes**. Pass-13/14 reported the
+    files as "in flight" — implying recent edits — but the on-disk
+    mtimes show the work was completed Tuesday evening and has been
+    sitting un-committed ever since. The framing "active work" was
+    wrong; the framing is **stalled work**. agent-wrap binary also
+    present (Makefile has been run at least once), so the work
+    compiles. No new commits in ~/wintermute/agentns/ since a8a1845
+    (kernel-side boot-hang fix at 2026-05-25 09:27 PT).
+
+  - **/proc/self/agent_session still 32 zeros** — kernel surface
+    unchanged. Wrapping gap unchanged.
+
+Triggers from 11:00Z (per pass-14 prediction, harvest dropped,
+trigger (d) replaced with "agentns first commit lands"):
+  (a) claude-agentns-wrap ships → UNMET.
+  (b) fidelity Fleet 1 ≥3/5 shipped → 0/5 UNMET (recall-surfaced-
+      tracking still 0/5 after ~32h since drop).
+  (c) new user articulation → manual /dream invocation, no topic
+      seed. UNMET as a Fleet trigger; this manual invocation may
+      be the user's signal to act on the nudge below.
+  (d) **agentns first commit lands** → UNMET (still uncommitted).
+      Now elevated from watch-item to trigger by pass-14's plan.
+
+No PRDs drafted. Per rule 6 — no new evidence, no new motivation.
+
+**User-offer surfaced this pass (per pass-14 plan):**
+
+  The agentns userspace work has been on disk for ~36 hours without
+  a commit (4 dream passes have observed it; first-observed on
+  pass-12). The files are complete-looking: `agent-wrap.c` (~87 LOC,
+  CLONE_NEWAGENT unshare + AGENT_INTENT prctl + ENOSYS/EPERM graceful
+  degrade), `Makefile` (gcc -O2 -Wall -Wextra -std=gnu11), built
+  `agent-wrap` binary. Same 5 modified files in main agentns/ from
+  prior passes (.gitignore, README.md, kernel/agent_namespaces.c,
+  tests/test_inheritance.sh, tests/test_unshare.c) plus the
+  untracked tests/unshare-helper.c.
+
+  This is the load-bearing PRD for continuity Fleet 1 (5 PRDs
+  blocked on non-zero agent_session: claude-agentns-wrap pairs
+  recall-session-stamp + memlog-witness + session-postmortem +
+  provq).
+
+  Phrasing to surface to user: "Want me to commit + push the
+  agentns userspace work? Or is something pending (Cargo.toml
+  unsure, AC mapping incomplete, tests not run) that's blocking
+  the commit?" The dream-side cannot answer the second question
+  without making assumptions about user intent on un-authored work.
+
+Curation considered, none warranted: 57 PRDs, 12 active visions,
+inventory unchanged.
+
+Watch items carrying forward:
+  - **claude-agentns-wrap**: now elevated to trigger (d). If next
+    pass shows commits, fires Fleet 2 onramp PRD drafting (5 bullets
+    captured in vision-onramp doc).
+  - **fidelity Fleet 1 #1**: recall-surfaced-tracking, smallest, no
+    deps. Still 0/5. ~32h since drop.
+  - **chord-async-delegate / drift-fix-self-review-dream**: still
+    user-gate-blocked per self-review run 10.
+  - **/triage `--kind feedback` bug**: still single-evidence; second
+    surfacing promotes to PRD.
+
+Meta-observation for /dream rule 11+ pass arc:
+  - Pass-12/13/14 all called agentns "in flight". The mtime check
+    this pass exposes that framing as wrong; the files are stalled,
+    not active. Lesson: when reading "uncommitted untracked work",
+    always `stat -c '%y'` the files. "In flight" implies recent
+    edits; "stalled" implies user blockage. The first triggers a
+    watch-then-wait posture; the second triggers a user-nudge. The
+    distinction matters and dream missed it for 3 passes. Logged
+    into visions/freshness.md §Evidence log as freshness-on-files
+    candidate (mtime is the cheap source of truth for "active
+    vs stalled" claims about uncommitted work). NOT drafted as PRD.
+
+Notes for next /dream:
+  - If agentns lands (commits + push), fire trigger (d) Fleet 2:
+    draft onramp Fleet 2 (5 bullets, all in vision doc).
+  - If agentns still uncommitted at pass 16, escalate again: ask
+    the user directly in the dream output whether the work is
+    actually blocked on review, on a test, or on uncertainty about
+    PRD-claude-agentns-wrap's exact contract; drafting a successor
+    PRD that captures the on-disk implementation as Status:Implemented-
+    pending-PRD-update would be a real option then.
+  - Same other watches carry: fidelity Fleet 1 first ship,
+    chord/drift-fix user-gates, /triage --kind feedback bug.
