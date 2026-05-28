@@ -7,10 +7,10 @@
 build_auto: false
 build_target: rust-extend
 build_into: /home/jsy/wintermute/recall
-**Version target:** `recall v0.6.0` (minor — schema-additive)
-**Coordinated with:** `recall-daemon` (v0.5.0 in-flight),
-`recall-outcome-feedback` (v0.5.1–0.5.3 rebased range). v0.6.0
-gives this PRD a clean band that doesn't collide with either.
+**Version target:** `recall v0.7.0` (minor — schema-additive)
+**Coordinated with:** `recall-outcome-feedback` shipped at v0.6.0
+(2026-05-27, CHANGELOG.md `## v0.6.0`). Retargeted from v0.6.0 →
+v0.7.0 to avoid the collision; still a clean minor band.
 
 ---
 
@@ -142,7 +142,7 @@ genuinely unknown.
 ## 4. Acceptance criteria
 
 1. **AC1 — Builds, tests pass.** `cargo test --release --lib` green.
-   `recall --version` reports `0.6.0`. CHANGELOG.md gets a v0.6.0
+   `recall --version` reports `0.7.0`. CHANGELOG.md gets a v0.7.0
    entry.
 2. **AC2 — Old files load.** Existing memory files without
    `written_by_session` parse cleanly; their accessors return
@@ -202,13 +202,11 @@ existing serde_yaml frontmatter loader.
 
 ## 6. Coordination with sibling recall PRDs
 
-- `recall-daemon` is at iter-2 (v0.5.0 target, UDS ping op shipped).
-  This PRD lands at v0.6.0, *after* daemon GA (v0.5.x → v0.6.0).
-- `recall-outcome-feedback` rebased its phasing to v0.5.1–0.5.3 to
-  avoid colliding with daemon. v0.6.0 is past that range; safe.
-- If daemon is still pre-1.0 at the time this PRD ships, the
-  session-stamp fields flow through automatically (daemon reads the
-  same frontmatter). No daemon-side change required.
+- `recall-daemon` shipped (UDS ping op + GA). `recall-outcome-feedback`
+  shipped at v0.6.0 (2026-05-27). This PRD lands at v0.7.0, past both;
+  no collision.
+- daemon reads the same on-disk frontmatter, so session-stamp fields
+  flow through automatically. No daemon-side change required.
 
 ---
 
@@ -232,9 +230,9 @@ existing serde_yaml frontmatter loader.
 - Vision: visions/continuity.md, Fleet 1 PRD #4.
 - Depends on PRD-agentns-claude (PRD #1) for primary-source
   session_id. Falls back gracefully on stock kernels.
-- Coordinates with recall-daemon (v0.5.0 in flight) and
-  recall-outcome-feedback (v0.5.1+ rebased) — chose v0.6.0 for this
-  PRD to avoid any version collision.
+- Coordinates with recall-daemon (shipped) and
+  recall-outcome-feedback (shipped at v0.6.0) — chose v0.7.0 for this
+  PRD to avoid version collision.
 - Frontmatter rationale: provfs xattr is fragile across backups and
   non-provfs filesystems, per `~/wintermute/provfs/README.md`
   scope ("FUSE-overlay slice — loadable LSM variant deferred").
