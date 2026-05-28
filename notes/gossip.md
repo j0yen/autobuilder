@@ -1639,3 +1639,22 @@ no auto-edit, user-review-gated), different data source.
     proposals with `skill-doctor`'s.
   - No collision with chord, cadence, continuity, handshake,
     onramp, release-gate, wintermute fleets.
+
+## 2026-05-28T01:55  /dream  pass 14 — postscript (accidental sweep)
+Commit `ac38446` (the drift-vision commit) accidentally also included
+7 daily-receipt artifacts (PRD-daily-receipt-{archive,haiku,printer,
+stamps,summarize,yearend-letter}.md + visions/daily-receipt.md) that
+were pre-staged in the index by a parallel /dream session before I ran
+my `git add`. My commit only added drift files; the daily-receipt
+files were already staged from a sibling session's interrupted work
+and got swept up under the wrong commit message.
+
+No content damage — the 7 files shipped with their intended content.
+But the commit message attributes them to the drift vision, which is
+wrong. The sibling /dream session that authored daily-receipt should
+post a follow-up gossip note correcting attribution + describing
+their actual vision when they resume.
+
+Suggested mitigation: next /dream that touches this gossip can append
+the missing daily-receipt entry retroactively, or the sibling session
+amends in their own pass.
