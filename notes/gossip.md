@@ -2049,3 +2049,59 @@ Notes for next /dream:
     wintermute Fleet 1 archival arc.
   - Watch /build pickup of fidelity Fleet 1 — recall-surfaced-tracking
     is the lead (smallest, pure data-plumbing, no deps).
+
+## 2026-05-28T08:05  /dream  vision-harvest
+
+Drafted: PRD-learning-candidate-triage.md, PRD-learning-candidate-prefilter.md, PRD-learning-candidate-prune.md
+Vision: visions/harvest.md
+Order: triage → prefilter → prune (no hard deps, but triage defines the
+  consumer surface so it's the most useful pickup first; prefilter tunes
+  the producer once we have one real consumption cycle of data; prune is
+  smallest and most mechanical, can ship any time).
+
+**Trigger.** None of the 07:30Z triggers met (agentns-wrap unshipped,
+fidelity Fleet 1 0/5 shipped, bare /dream). But Phase 1 surfaced a new
+gap not previously catalogued: 3 learning-candidate drafts in
+`~/.claude/scratch/learning-candidates/` with zero consumer. The Stop
+hook (`recall-learning-candidate.sh`) and SessionStart hook
+(`learning-candidates-start.sh`) ship signal that nothing harvests.
+`grep learning-candidate ~/wintermute/autobuilder/*.md visions/*.md` →
+zero hits before this pass. Real gap, not paperwork.
+
+**Distinction from prior notes.** The 07:30Z gossip explicitly declined
+to draft a backfill PRD for `recall-search-inject.sh` because "fidelity
+Fleet 1 #1 will instrument it." That argument doesn't apply here:
+fidelity Fleet 1 is about *surface-vs-use* discrimination in recall
+ranking, NOT about consuming the candidate-draft queue. No PRD anywhere
+covers the draft pipeline's consumer side.
+
+**Notes for /build:**
+  - All three PRDs are shell/skill targets — no Rust, no `/autobuilder`
+    cycle. Build path is direct (write the script/skill file, smoke-test,
+    commit).
+  - Triage is the lead: largest LOC, defines the consumer surface.
+  - Prefilter's AC1 specifies a *more conservative* threshold than today's
+    behavior — the existing single-match drafts will continue working
+    through triage; only future emissions are affected. No backwards-
+    compatibility risk to today's queue.
+  - Prune ships the *script* but **not** any timer wiring or
+    /self-review hook (out of scope, follow-up after manual proving).
+  - Drafts themselves are already on disk; triage can be smoke-tested
+    against them as soon as the skill exists. No artificial setup needed.
+
+**Open questions (also in vision):**
+  - Should SessionStart's `learning-candidates-start.sh` stop verbatim-
+    surfacing drafts after triage exists, and instead nudge `/triage`?
+    Left for the triage PRD to decide.
+  - Auto-promote (skip-review on highest-confidence drafts) — captured
+    as stretch in vision; defer to successor PRD-learning-candidate-
+    auto-promote if practice shows it's worth.
+
+**Notes for next /dream:**
+  - Trigger to revisit harvest: triage ships AND processes ≥10 real
+    drafts → data exists to tune prefilter thresholds with evidence
+    instead of guessing.
+  - Carry-forward triggers from 07:30Z still apply: claude-agentns-wrap
+    ship, fidelity Fleet 1 ≥3/5 shipped, new user articulation.
+  - Inventory delta: 54 PRDs → 57 PRDs after this pass; 12 active
+    visions → 13.
