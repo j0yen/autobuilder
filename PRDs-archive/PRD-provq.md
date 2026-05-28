@@ -6,6 +6,12 @@
 **Vision:** [visions/continuity.md](visions/continuity.md)
 build_auto: false
 build_target: rust-cli
+deferred_acs: [4, 5, 6, 7]
+deferred_ac_reasons:
+  4: "boot-gated — requires running linux-wintermute kernel with provfs LSM active so live xattrs carry agentns 128-bit session_id rather than the comm: fallback. Round-trip with agentns-claude needs the same kernel. Verified post-reboot."
+  5: "boot-gated — `scan --since` exercises the LSM's CLOSE-after-WRITE stamping path; under the FUSE overlay (today-testable) the same xattrs are written but the kernel-side AC text specifically calls out post-write recency under the LSM. Verified post-reboot."
+  6: "boot-gated — `scan --session` filters on the agentns 128-bit session_id, which only the kernel populates. Pre-boot the field reads as comm: fallback and the filter has nothing distinctive to match. Verified post-reboot."
+  7: "boot-gated — skip-prefixes (target/, node_modules/, .git/) are honored by the in-kernel LSM stamper; the FUSE overlay has its own (matching) skip list. AC7 text specifically asserts the kernel-side honoring. Verified post-reboot."
 **Boot-gated:** AC4–AC7 gate on the wintermute kernel's provfs LSM
 stamping live xattrs. AC1–AC3 pass against the existing
 `~/wintermute/provfs/` FUSE-overlay implementation, which already
