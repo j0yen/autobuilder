@@ -1505,3 +1505,137 @@ archive actions to fire in rapid succession.
   deferred ACs exist in PRD frontmatter, motivating an attestation
   walker)
 
+
+## 2026-05-27T22:00  /dream  vision-daily-receipt (pass 14, NEW vision)
+Drafted: PRD-daily-receipt-summarize.md, PRD-daily-receipt-haiku.md,
+  PRD-daily-receipt-stamps.md, PRD-daily-receipt-archive.md,
+  PRD-daily-receipt-yearend-letter.md
+Vision: visions/daily-receipt.md (new)
+
+**Trigger:** user articulation this session — MASUNG IP1000 thermal
+printer arrived 2026-05-27, PRD-daily-receipt-printer just queued
+(58mm, /dev/usb/lp0 live, paper en route). User: "Articulate the
+haiku-composition + year-end-scroll arc downstream of it." Vision-
+worthy: 4 distinct named components + a capstone, all motivated by
+the 2026-05-22 archived daily-receipt PRD's never-built §4 pipeline
+and §9 open questions.
+
+**Order (critical path):**
+  1. daily-receipt-printer (THIS SESSION, queued) — bytes meet paper
+  2. daily-receipt-summarize — gathers ctrace+git+recall+journal into
+     summary.json; the upstream the original PRD §4 named but
+     never built
+  3. daily-receipt-haiku — Claude API call producing 3-line content
+     from summary.json; cached system+few-shot, <$4/year
+  4. daily-receipt-stamps — special-day catalog (sibling, ships any-
+     time after #1; seeds itself with "printer-arrives" 2026-05-27)
+  5. daily-receipt-archive — annual PDF from cadence's `daily`
+     records; depends on cadence-substrate + cadence-bind-daily-
+     receipt landing first
+  6. daily-receipt-yearend-letter — Dec-31-23:55 long thermal strip
+     + PNG twin for the archive PDF cover; depends on #5 and #3
+
+**Notes for /build:**
+  - Summarize → haiku gets workdays printing real content within
+    ~3 ship cycles after the printer wrapper lands.
+  - Stamps is the cheapest first ship of the 5 here (no API, no
+    PDF, just JSON + render). Good "warm up" candidate.
+  - Archive + yearend-letter both depend on the cadence fleet
+    (substrate + bind-daily-receipt). If cadence-substrate is
+    still queued when /build gets here, defer these two until it
+    ships. They're well-formed PRDs regardless.
+  - yearend-letter has a small rust-extend side-edit on daily-
+    receipt itself (`render_long_text`). Build that crate first,
+    then yearend-letter consumes it via path dep.
+  - Cost ceiling for the whole arc (haiku + yearend-letter)
+    estimated at <$5/year. Don't over-engineer cost controls.
+
+**Vision doc Fleet 2 bullets (next /dream pass material):**
+  - daily-receipt-photo (monthly scan-prompt ritual)
+  - daily-receipt-redo (reprint a past day from cache)
+  - daily-receipt-status-board (web view of the year's grid)
+  - glyph vocabulary v2 (bigram-shaped, not noise — after ~30
+    quiet-day strips give a feel for what's missing)
+  - build-shipped milestones as automatic stamps (gossip hook)
+  - K and M strips (audience-shaped haikus; multi-printer mirror)
+
+**Notes for next /dream:** unblock conditions:
+  - daily-receipt-printer ships → fix any device-quirk PRDs that
+    surface (IP1000 might surprise us — paper-out detection, cut
+    behavior, CP437 codepage edges, etc.)
+  - Paper arrives + first real strip prints → smoke-test PRD shape
+    might need revision based on real-world physical output
+  - Any of summarize/haiku/stamps ships → archive + yearend-letter
+    PRDs become unblock-ready (assuming cadence fleet keeps moving)
+  - >=30 days of real strips accumulated → revisit glyph vocabulary
+    v2, re-roll budget, and the K/M strip question with real data
+
+## 2026-05-28T01:50  /dream  pass 14 — vision-drift
+Drafted: PRD-drift-fix-self-review-dream.md, PRD-tool-manifest.md, PRD-skill-doctor.md
+Vision: visions/drift.md
+Order: drift-fix-self-review-dream (independent, ship first) || tool-manifest
+  (no deps, ship parallel) -> skill-doctor (depends on tool-manifest)
+
+**Seed:** Bare /dream invocation. No unblock condition from pass 13's
+list was met (build-deferred-acs not shipped yet, no Fleet 2 ships, no
+new user articulation, no wm-verify trigger). Looked for fresh white
+space; found it: 6+ consecutive self-review ticks have flagged the same
+three tool-skill drift instances in their journal entries without
+resolution. Pattern is structural, not effortful — nobody owns "fix
+the drifting flag." Plus a 4th instance surfaced during Phase 1
+(ctrace ls in dream/SKILL.md:86, already in freshness evidence log).
+All four verified live via direct probe.
+
+**Live evidence:**
+  1. `pevent gc --older-than 7d --dry-run` cited at
+     `self-review/SKILL.md:74,170,389`. Installed: only `[-h]
+     [--older-than OLDER_THAN]`. `--dry-run` doesn't exist; `7d`
+     errors as "invalid float value: '7d'".
+  2. `bpolicy status --format json` cited at `self-review/SKILL.md:77`.
+     Installed `bpolicy status` accepts `[-h]` only.
+  3. Bootstrap-symlinks 13-tool list at `self-review/SKILL.md:93`.
+     7 of 13 missing from `~/.local/bin/`: skill, episode, apipe,
+     recall-ops, recall-doctor, recall-io, mirror. Yields 7
+     false-positive DANGLING lines every self-review tick.
+  4. `ctrace ls` cited at `dream/SKILL.md:86`. Installed: subcommands
+     are start|stop|status|query|tail. Already flagged in
+     `visions/freshness.md` evidence log.
+
+**Vision shape:** Sibling to freshness/recall-doctor-claims —
+freshness catches drift in memory bodies; drift catches drift in skill
+text. Same proposal-queue idiom (`~/.claude/<tool>/proposals/<ULID>.md`,
+no auto-edit, user-review-gated), different data source.
+
+**Notes for /build:**
+  - drift-fix-self-review-dream is a single-tick shell-extend edit
+    over two SKILL.md files. Smallest ship in vision-drift; closes
+    the noise loop immediately. Verify each replacement invocation
+    against the live binary BEFORE writing it.
+  - tool-manifest is a fresh rust-cli, new repo at
+    `~/wintermute/tool-manifest/`, new GitHub repo j0yen/tool-manifest.
+    Foundational — skill-doctor reads its JSON output.
+  - skill-doctor is a fresh rust-cli, new repo at
+    `~/wintermute/skill-doctor/`. AC11 is the verified-completed
+    gate (one user-promoted proposal must land as an actual skill
+    edit), mirroring freshness/recall-doctor-claims AC10.
+  - All 3 PRDs `build_auto: false` per default /dream rule (vision
+    is opt-in until user articulates).
+
+**Notes for next /dream:** unblock conditions:
+  - drift-fix-self-review-dream ships → next self-review tick should
+    log zero of the four flagged instances; verify in journal.
+  - tool-manifest ships → skill-doctor unblocks.
+  - skill-doctor ships + first user-promoted proposal lands →
+    Fleet 2 draftable (drift-self-review-integration,
+    drift-cli-help-snapshot, drift-changelog-witness,
+    drift-config-files, drift-bootstrap-truth).
+  - Any wintermute Fleet 2 ship → Fleet 3 trigger (>=2 ships).
+  - build-deferred-acs ships → check Fleet 1 unblock effect.
+  - New user articulation.
+
+**Cross-fleet notes:**
+  - freshness vision composes naturally: a future Fleet 2 unified-
+    proposals skill could merge `recall doctor --check-claims`'s
+    proposals with `skill-doctor`'s.
+  - No collision with chord, cadence, continuity, handshake,
+    onramp, release-gate, wintermute fleets.
