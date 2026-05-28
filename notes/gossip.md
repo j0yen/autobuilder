@@ -1931,3 +1931,66 @@ recalled.json` and applies blanket `+0.02` accept on every surfaced id.
     PRD that touches the same code paths (e.g., recall-stop-hook
     refactor), flag for collision review before drafting more
     fidelity work.
+
+## 2026-05-28T07:05  /dream  no-fleet-pass (curation + boot validated)
+
+Bare /dream ~30min after fidelity vision drop. Eighth no-fleet-pass.
+Curation, not drafting — research didn't motivate a new fleet.
+
+**Boot validation landed this pass** (was an open gate for continuity vision):
+  - `uname -r` → `7.0.10-arch1-5-wintermute` (linux-wintermute booted)
+  - `/dev/memlog` is a live char device
+  - `cat /proc/self/agent_session` → 32 zeros (kernel surface present;
+    Claude is NOT yet wrapped — confirms `claude-agentns-wrap` is the
+    highest-leverage unblock for the continuity arc)
+  - `pacman -Q linux-wintermute` → `7.0.10.arch1-5`
+
+**Curation actions** (no PRD content changed, only manifest):
+  - Attached `PRD-provfs-deferred-stamp.md` to `onramp` Fleet 1
+    prds_drafted. Already cited by name in vision doc §Order #3 ("pairs
+    with provfs-comm-richer, shared hook-time capture buffer"); the
+    manifest list had omitted it. Now consistent.
+  - Attached `PRD-wintermute-fleet-agorabus-announce-fix.md` to
+    `wintermute` Fleet 1.5 prds_drafted. Already cited verbatim in the
+    fleet_1_5_pass_16_trigger note (one-line-per-repo `Client::announce()`
+    fix; sibling to bus-smoke-convention); manifest list had omitted it.
+  - Added `boot_validated_at` + evidence to continuity manifest entry.
+
+**No new PRDs drafted.** Considered four candidates that look like a
+"continuity Fleet 1.5" (claude-agentns-wrap, kernel-pkg-postinstall,
+provfs-comm-richer, provfs-deferred-stamp), then re-read the onramp
+vision and found they ARE that fleet by other name. Drafting a wrapper
+would duplicate intent. Per dream rule 6 ("don't dream past the
+research"), curation is the honest output here.
+
+**Hints for /build:**
+  - `onramp` Fleet 1 #2 (`PRD-claude-agentns-wrap.md`) is now the
+    highest-leverage unblock — it gates 4 of 5 `continuity` Fleet 1
+    PRDs (recall-session-stamp/memlog-witness/session-postmortem/provq
+    all need non-zero `agent_session`). Until this lands every Claude
+    session continues to read 32 zeros and the rest of continuity
+    silently falls back to PID-tree / `comm:` mode.
+  - `onramp` Fleet 1 #1 (`PRD-kernel-pkg-postinstall.md`) is the
+    smallest and has no deps. After it ships, `memlog show` works
+    without sudo for users in the new `memlog` group.
+  - `fidelity` Fleet 1 (5 PRDs, drafted at 06:30Z this morning) is
+    ready for pickup; PRD-recall-surfaced-tracking is the lead (pure
+    data plumbing, smallest first).
+
+**Inventory snapshot:**
+  - 56 PRDs on disk, 47 attached to visions, 9 unattached.
+  - Of the 9 unattached: 5 shipped per CLAUDE_SELF changelog (ambient,
+    cradle, cradle-bake-integration, morsel, daily-receipt-printer —
+    the last one lives intentionally in daily-receipt's
+    prds_referenced_not_drafted), 3 are notebook seeds (serious-200,
+    whimsy-50, whimsy-cont — `build_target: notebook`, not vision
+    material), 1 is the agorabus-announce-fix attached this pass.
+  - 12 active visions; 1 fulfilled (release-gate).
+
+**Notes for next /dream:** Trigger to break a no-fleet streak should
+be one of: (a) `claude-agentns-wrap` ships and a Claude session reads
+a non-zero `agent_session` for the first time — that's the kernel→
+userspace handshake fully landed and Fleet 2 of continuity becomes
+draftable; (b) fidelity Fleet 1 reaches ≥3 of 5 shipped — Fleet 2
+(confidence-recalibrate, ranking-utility-weight) becomes evidence-
+backed; (c) new user articulation.

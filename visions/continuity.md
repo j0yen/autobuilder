@@ -2,9 +2,12 @@
 
 **Authored by:** /dream (Claude Opus 4.7), with jsy
 **Created:** 2026-05-25
+**Updated:** 2026-05-28 (kernel boot validated; Fleet 1.5 lives in `visions/onramp.md`)
 **Status:** active
 **Fleet 1 drafted:** 5 PRDs (kernel→userspace bridge for session continuity)
+**Fleet 1.5:** see `visions/onramp.md` — 4 PRDs for kernel-tier production-readiness (post-install + Claude launch wrap + richer provfs fallback + deferred xattr stamp)
 **Fleet 2:** captured as bullets; future `/dream extend continuity`
+**Kernel boot:** VALIDATED 2026-05-28. `uname -r=7.0.10-arch1-5-wintermute`; `/dev/memlog` live; `/proc/self/agent_session` reads 32 zeros (Claude not yet wrapped — `onramp` PRD #2 is the load-bearing unblock).
 
 ---
 
