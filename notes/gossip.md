@@ -2302,3 +2302,99 @@ Notes for next /dream:
     becomes unblocked (5 PRDs all depending on it).
   - **Watch fidelity Fleet 1 #1 first ship** (recall-surfaced-tracking,
     smallest, no deps). Still 0/5 shipped after 24+ hours since drop.
+
+## 2026-05-28T10:30  /dream  no-fleet-pass (13th; Fleet 1.5 ship + LC mystery resolved)
+
+Bare /dream ~30min after 10:00Z pass-12. THIRTEENTH /dream no-fleet-pass.
+State delta is digestible-as-bookkeeping, but with one mystery closed.
+
+State delta since 10:00Z:
+
+  - **5 new autobuilder commits**, all within already-shipping work:
+    - **274c9b4** `build: archive PRD-wintermute-hardware-smoke-convention
+      (shipped)` — wintermute Fleet 1.5 PRD SHIPPED. Already counted
+      under fleet_1_5_pass_15 trigger; doesn't fire a new Fleet 2
+      trigger because it's NOT a fidelity Fleet 1 ship (trigger (b)
+      still 0/5).
+    - **8a759bc / f8d9c09 / b077a1f / 52e0315** — build-deferred-acs
+      iter-5 backfill across wintermute-platform/audio/stt/tts.
+      Mechanical fan-out of the convention shipped at 274c9b4;
+      build-deferred-acs PRD still in_progress (this is its job).
+
+  - **LC queue mystery from pass 12 → RESOLVED.** Self-review run 9
+    at 09:34Z explicitly logs:
+      `## Triage — 2026-05-28T09:34Z (one /build tick → /triage)`
+    with 3 candidate dispositions (1 save → procedural/self memory
+    01KSPYXA03FFGFQ2G1Z6AYQDEJ "use recall + skills proactively",
+    2 discard — one dup of the save, one machine-output false-match).
+    Consumption mechanism IS audit-logged, just in journal not in
+    `.claude/scratch/learning-candidates/.audit.log`. No
+    observability gap; pass-12 hypothesis of drafting
+    PRD-learning-candidate-audit-completeness is REJECTED.
+
+  - **agentns userspace work continues in flight**: still
+    `~/wintermute/agentns/userspace/` untracked + 5 modified files +
+    tests/unshare-helper.c untracked, no new commits since
+    a8a1845. claude-agentns-wrap PRD ticks=0 in manifest. First
+    commit-grade artifact still pending.
+
+  - **/build blocker count rose 3 → 5** per self-review runs 8→9:
+    added `chord-async-delegate` (user-gate-install) +
+    `drift-fix-self-review-dream` (classifier-self-mod). All 5 need
+    user judgment, none auto-clearable.
+
+  - **New finding from self-review run 9 /triage section**: `/triage`
+    SKILL.md classification table maps `--kind feedback` but recall
+    REJECTS that kind (valid: procedural/semantic/episodic/reflective).
+    Self-review used `procedural/self` as nearest fit. This is a
+    real bug in `~/.claude/skills/triage/SKILL.md`. **Logged here,
+    not drafted** — same logic as pass-12 self-review noise
+    reduction: 30-second mechanical patch, not PRD-shaped, and the
+    in_progress PRD-learning-candidate-triage.md could naturally
+    swallow it as an additional AC. If it recurs across passes,
+    revisit.
+
+  - /proc/self/agent_session: 32 zeros. UNMET.
+
+Triggers from 10:00Z (still ALL unmet):
+  (a) claude-agentns-wrap ships → UNMET (queued, ticks=0; userspace
+      work in flight but not committed).
+  (b) fidelity Fleet 1 ≥3/5 shipped → 0/5 UNMET (all queued
+      ticks=0; 274c9b4 is wintermute Fleet 1.5, not fidelity).
+  (c) new user articulation → bare /dream this pass. UNMET.
+  (d) harvest triage ships AND ≥10 drafts processed → triage
+      in_progress ticks unchanged; 0 drafts on disk so ≥10 condition
+      is FURTHER from satisfaction. UNMET on both counts.
+
+No PRDs drafted. Per rule 6 — don't dream past the research; per
+the rest-pace pattern (now 12/13 of the 5/28 arc) — when state delta
+is digestible as bookkeeping and no trigger fires, prefer terse log
+over PRD churn. The Fleet 1.5 ship is a healthy data point but was
+already counted in the fleet_1_5_pass_15 trigger. The LC mystery
+closing is the most valuable finding — it prevents drafting a
+duplicate observability PRD.
+
+Curation considered, none warranted:
+  - Inventory unchanged: 57 PRDs on disk, 50 attached to visions,
+    7 unattached (5 shipped+stale + 3 notebook seeds; all explained
+    in prior passes).
+  - 13 active visions; nothing new to attach.
+  - The triage `--kind feedback` bug could be a one-line addition
+    to PRD-learning-candidate-triage.md but rule 2 ("never modify
+    existing PRDs") suggests waiting for /build to take a tick on
+    it and surface the issue from inside the implementation pass.
+
+Notes for next /dream:
+  - Same four triggers carry forward unchanged.
+  - **Watch claude-agentns-wrap commit**: agentns userspace dir
+    has been "active in flight" for two passes now without a
+    commit-grade artifact. If 30+ min passes without progress,
+    that's a stall signal worth noting (not a PRD; just a watch).
+  - **Watch /triage skill recurrence**: if a future self-review run
+    independently surfaces the `--kind feedback` bug a second time,
+    it's worth a one-line PRD then.
+  - **Watch fidelity Fleet 1 first ship** (recall-surfaced-tracking,
+    smallest, no deps). 0/5 after ~28 hours since drop.
+  - **Watch chord-async-delegate / drift-fix-self-review-dream**:
+    both `in_progress ticks=0`. They're blocked on classifier/user-
+    gate, not on /build inertia. User-flip might be all they need.
