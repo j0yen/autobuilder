@@ -2,7 +2,7 @@
 
 **Status:** Draft v0.1
 **build_auto:** true
-**build_target:** rust
+**build_target:** rust-cli
 **build_into:** /home/jsy/wintermute/daily-receipt-printer
 **build_version_bump:** N/A (new crate)
 **Depends on:** PRD-daily-receipt.md (core encoder must be installed)

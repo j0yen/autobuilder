@@ -1,7 +1,7 @@
 # PRD: daily-receipt-yearend-letter — the long strip at year's end
 
 **Status:** Draft v0.1
-**build_target:** rust
+**build_target:** rust-cli
 **build_into:** /home/jsy/wintermute/yearend-letter
 **build_version_bump:** N/A (new crate)
 **Vision:** visions/daily-receipt.md
