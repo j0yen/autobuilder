@@ -2939,3 +2939,107 @@ Notes for next /dream:
     bullet in (which vision? — verify) is satisfied.
   - When continuity Fleet 1 reaches 3/5 shipped, the Fleet 2 draft
     pass fires per the vision-doc trigger.
+
+## 2026-05-28T13:25  /dream  agentns-on-path-confirm (19th invocation)
+
+Manual /dream invocation from user, bare. 19th /dream pass; 25 min after
+pass-18. State delta is small — pass-18 already captured the 4-tick burst
+that landed provq/chord-claim-iter-1/skill-doctor-stage-1-2/agentns-claude-
+install. This pass mostly confirms what landed and surfaces one
+freshly-unblocked PRD.
+
+Live verification this pass:
+  - `which agentns-claude` → `/home/jsy/.local/bin/agentns-claude`
+  - `agentns-claude --version` → `agentns-claude 0.1.0`
+  - Confirms pass-18's manifest claim ("install -Dm755 to ~/.local/bin")
+    actually reached PATH. Smoke-tested clean.
+
+Git delta since pass-18 (12:57Z latest commit, last_tick_at 13:11Z, now
+~13:25Z): NONE in the four hot repos.
+  - agentns-claude: tip still 4e59669 (iter-2 from 06:06Z; install was a
+    later /build action, not a new commit).
+  - agorabus: tip still 2f5feee (external distribution prep); chord-claim
+    iter-1 scaffold from 12:32Z is in working tree, not yet committed —
+    iter-2 will commit + bump v0.2.0.
+  - skill-doctor: tip still 463dbed (iter-0 scaffold); Stage 3 implement
+    pending.
+  - provq: tip still 387e5da (iter-1 scaffold) — published-and-archived
+    state lives in wintermute@6a1e676 (REPOS.md row), not in repo itself.
+
+**Newly-unblocked PRD signal for /build:**
+
+  PRD-claude-agentns-wrap.md (onramp Fleet 1 #2) carries the dependency
+  line "Depends on: PRD-agentns-claude.md shipped + installed at
+  ~/.local/bin/agentns-claude". As of pass-18 this was the load-bearing
+  precondition; as of pass-19 (verified above) it's satisfied. The wrap
+  PRD is now a legitimate /build candidate. CAVEAT: build_target is
+  `mixed` and build_into is `/home/jsy` — the PRD modifies ~/.zshrc,
+  systemd-user units in ~/.config/systemd/user/, and ~/.claude/scripts/
+  agorabus-session-start.sh in place. Even under the 2026-05-27
+  "build_auto:false ignored" rule, this one is the rare in-place
+  laptop-mod PRD where the user may want to gate. Recommendation to
+  /build: prefer chord-claim iter-2 commit or skill-doctor Stage 3 next
+  (both are isolated-repo work); surface claude-agentns-wrap to the
+  user before applying any ~/.zshrc edit.
+
+Fleet trigger status (unchanged from pass-18):
+  - continuity Fleet 2: 1/5 confirmed shipped (provq); 2/5 if
+    agentns-claude in_progress→completed counts. Threshold is 3/5.
+    NOT armed.
+  - onramp Fleet 2: 0/3 Fleet 1 shipped (kernel-pkg-postinstall,
+    claude-agentns-wrap, provfs-comm-richer all queued). Threshold is
+    2/3. NOT armed.
+  - wintermute Fleet 1.5: announce-fix orphan PRD curation only;
+    pass-16 trigger remained at curation-only, no Fleet 1.5 movement
+    this pass.
+
+Pacing note: pass-18 caught real ship movement (provq + chord-claim
+iter-1 + skill-doctor stage-1-2 + agentns-claude install). Pass-19
+caught a confirmation only. The 30-min /dream cadence is still
+appropriate: it surfaces ship events as they happen but tolerates
+quiescent intervals without producing noise PRDs.
+
+**Carried user-offers (REPEAT, no new info):**
+
+  1. Cleanup decision on `~/wintermute/agentns/userspace/` C wrapper
+     (commit as examples/, rm -rf, or leave). Superseded by Rust path.
+  2. Install-step question for agentns-claude: empirically answered
+     by provq's and agentns-claude's parallel paths — /build does
+     drive cargo install + ~/.local/bin install autonomously, no
+     user-gate needed.
+  3. Three continuity Fleet 1 PRDs (memlog-witness, recall-session-
+     stamp, session-postmortem) carry legacy build_auto:false. Per
+     2026-05-27 directive these are ignored and the PRDs are
+     buildable. memlog-witness already flipped to needs_classification.
+     Suggestion: /build honors the rule autonomously on the remaining
+     two.
+
+**New user-offer surfaced this pass:**
+
+  4. claude-agentns-wrap is now dependency-satisfied. PRD modifies
+     ~/.zshrc + systemd-user units + agorabus hook in place. Three
+     options: (a) /build picks it up autonomously per the
+     "no opt-outs" rule and applies edits; (b) /build drafts a
+     proposals/ shadow (mirroring PRD-agorabus-boot-handshake's
+     iter-1 pattern: draft to proposals/, user reviews, then user
+     swaps live); (c) user explicitly gates this one PRD with a
+     blocker entry. Suggestion: (b) — the agorabus-handshake pattern
+     is already established for in-place laptop edits.
+
+Watch items carrying forward:
+  - agentns-claude wm-publish (j0yen/agentns-claude repo create).
+  - chord-claim iter-2 AC tests + v0.2.0 bump + push.
+  - skill-doctor Stage 3 implement extract/check/proposal.
+  - claude-agentns-wrap: surface user-offer #4 above before any
+    autonomous build action.
+  - fidelity Fleet 1 #1 (recall-surfaced-tracking) still 0/5.
+  - 5 chord/drift/etc. user-gate blockers — unchanged.
+
+Notes for next /dream:
+  - If claude-agentns-wrap proposals/ draft lands per option (b),
+    log the draft path and AC count.
+  - If agentns-claude publishes to j0yen, the install + publish
+    sequence will count as the second continuity Fleet 1 ship
+    (provq was first). Threshold for Fleet 2 stays at 3/5.
+  - If chord-claim iter-2 publishes, chord-vision claim-primitive
+    bullet is satisfied (agorabus v0.2.0).
