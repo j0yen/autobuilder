@@ -173,6 +173,17 @@ every axis.
 
 ## 4. Acceptance criteria
 
+**General principle (added iter-3, 2026-05-28)**: every hardware-gated
+AC in a target repo must have *either* a software pairing (a
+`cargo test --release` test that exercises the same code path with a
+substitutable input — env override, mock socket, recorded sample,
+etc.) *or* a witness-gated `#[ignore]` stub in `tests/hardware_acs.rs`.
+The two are not redundant; software pairs prove the code path under CI,
+witness stubs prove the hardware end-to-end works under an operator.
+Either satisfies /build's verified-completed check #5 for that AC.
+The AC-list shapes below reflect the principled selection actually
+shipped per repo: where a software pair exists, no stub is required.
+
 1. `~/wintermute/autobuilder/notes/conventions/hardware-smoke.md`
    exists, documents the convention (env name, file location, shape,
    doc-comment requirement), and explicitly cites
@@ -182,11 +193,19 @@ every axis.
    `WM_PLATFORM_HARDWARE_SMOKE=1`. Each stub has a doc-comment
    naming the manual procedure verbatim from the PRD's §4.
 3. `~/wintermute/wintermute-stt/tests/hardware_acs.rs` exists with
-   stubs for AC1/AC2/AC4/AC6/AC7/AC8 gated on
-   `WM_STT_HARDWARE_SMOKE=1`. Doc-comments as above.
+   stubs for AC1/AC4/AC5/AC6/AC7/AC8 gated on
+   `WM_STT_HARDWARE_SMOKE=1`. Doc-comments as above. AC2
+   (partial-cadence ~500ms) intentionally omitted — software-paired
+   by `src/processor.rs` `chunks_emit_partials_at_cadence` via
+   `with_partial_cadence_ms` override.
 4. `~/wintermute/wintermute-audio/tests/hardware_acs.rs` exists with
-   stubs for AC1/AC2/AC3/AC4/AC5/AC6/AC8 gated on
-   `WM_AUDIO_HARDWARE_SMOKE=1`. Doc-comments as above.
+   stubs for AC1/AC2/AC5/AC8 gated on `WM_AUDIO_HARDWARE_SMOKE=1`.
+   Doc-comments as above. AC3/AC4/AC6 intentionally omitted —
+   software-paired by `tests/wake_bus_smoke.rs`
+   `wake_publish_within_two_hundred_ms_ac3` (AC3, 200ms latency),
+   `tests/vad_bus_smoke.rs` (AC4, `wm.audio.speech.end` channel),
+   `tests/reload_bus_smoke.rs`
+   `reload_hot_swap_completes_within_two_seconds_ac6` (AC6, hot-swap).
 5. In each of the three target repos:
    `cargo test --release --lib` PASS (unchanged from current state —
    no regressions).
