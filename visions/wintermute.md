@@ -2,7 +2,7 @@
 
 **Authored by:** /dream (Claude Opus 4.7), with jsy
 **Created:** 2026-05-24
-**Updated:** 2026-05-27 (Fleet 2 drafted)
+**Updated:** 2026-05-27 (Fleet 2 drafted, Fleet 1.5 added)
 **Status:** active
 **Fleet 1 drafted:** 7 PRDs (foundation), 5/7 shipped as of 2026-05-27
   (bootstrap archived; platform/tts/stt/dialog shipped per CLAUDE_SELF
@@ -172,6 +172,54 @@ and small; music is the cheapest ship.
 direct user articulation, no End-state pin):**
 - `wintermute-news` — RSS + summarize-and-read
 - `wintermute-glow` — visual ambient state indicator
+
+## Fleet 1.5 — Maturation & validation (observed pattern 2026-05-27)
+
+Added by `/dream` pass 13 in response to a 4-PRD identical-shape
+bottleneck. Fleet 1's publish flurry today shipped 5 PRDs to GitHub,
+but 4 of the 5 are now stuck in `in_progress` purgatory because their
+acceptance criteria include ground-truth-required ACs (real mic, live
+systemctl, AT-SPI bus, 8h soak) that `/build`'s verified-completed
+check #5 cannot mechanically satisfy. The gap is structural, not
+effortful — combined 68 build-ticks already invested across the four
+PRDs without advancing the gate.
+
+| PRD | Stuck on |
+|---|---|
+| `wintermute-platform` | ACs 1-2 (systemctl/cold-reboot), AC8 (init.backoff event) |
+| `wintermute-audio` | Hardware-dependent ACs (PipeWire mic capture) |
+| `wintermute-stt` | Hardware-timing ACs + whisper.cpp build dep |
+| `wintermute-tts` | Hardware-timing ACs 1/3/5/7 (`#[ignore]`-gated) |
+
+This is not a "ship faster" problem; it is a "make the gap legible"
+problem. The fleet ships when the gap is named in the archive commit
+rather than hidden in iter-log notes.
+
+| # | PRD | Target | Notes |
+|---|---|---|---|
+| 1 | `PRD-build-deferred-acs.md` | self-mod | `deferred_acs:` frontmatter + gate honoring + archive trailer + backfill of 4 stuck PRDs. **Drafted 2026-05-27 (pass 13).** |
+
+**Future Fleet 1.5 (bullets — not drafted this pass):**
+
+- `wintermute-verify` — interactive `wm-verify` CLI that walks the
+  declared `deferred_acs:` of a PRD, prompts jsy to attest each one
+  against real hardware (and records timestamp + result + notes), and
+  outputs a Verified-completed: trailer block ready to paste into the
+  archive commit. Turns "deferred-by-design" into "verified-by-
+  attestation." Motivated by the same 4 stuck PRDs once their
+  declared deferrals exist.
+- `build-maturation-log` — a per-PRD journal at
+  `~/wintermute/autobuilder/maturation/<slug>.md` capturing
+  attestation episodes (run by `wm-verify` or by hand). Lets a future
+  reader trace which ACs were verified, when, by whom, against what
+  hardware. Motivated once `wm-verify` exists and attestation events
+  start happening.
+
+**Sequencing:** `build-deferred-acs` lands first (single tick, unblocks
+the 4 stuck PRDs immediately). `wm-verify` lands second once the
+declared-deferred ACs are visible in PRD frontmatter. `build-
+maturation-log` lands third once `wm-verify` is producing attestation
+records that benefit from a structured journal.
 
 ## Fleet 3 — Personalization, safety, offline (future)
 

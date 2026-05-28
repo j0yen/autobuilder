@@ -1470,3 +1470,38 @@ tts/stt/dialog still in queue dir pending archive).
     multi-user, undo, offline-persona).
 
 [feedback]: ~/.claude/projects/-home-jsy/memory/feedback_always_commit_push.md
+
+## 2026-05-27T21:35  /dream  pass 13 — Fleet 1.5
+Drafted: PRD-build-deferred-acs.md
+Vision: visions/wintermute.md updated with new "Fleet 1.5 — Maturation
+  & validation" section (1 PRD drafted, 2 bullets for future passes:
+  wm-verify, build-maturation-log).
+
+**Trigger:** 4 wintermute Fleet 1 PRDs (platform, audio, stt, tts) all
+stuck in_progress on identically-shaped hardware-dependent AC pairing
+after today's publish flurry. 68 combined ticks invested across the 4
+without the verified-completed check #5 gate satisfiable. Same pattern
+across 4 instances = structural problem, not effortful.
+
+**What this PRD does:** adds `deferred_acs: [N, M]` to PRD frontmatter
++ teaches /build's check #5 to honor it + writes a `Deferred:` trailer
+in archive commits + backfills the 4 stuck PRDs as part of its install
+action. Single tick. Sibling shape to build-publish-allowlist and
+build-push-allowlist (both shipped today). `build_target: self-mod`,
+`build_priority: high`.
+
+**Notes for /build:** PRD-wintermute-dialog is one tick from archive
+(iter log says "Next tick: archive PRD-wintermute-dialog.md") — that
+one doesn't need this PRD. The other 4 stuck PRDs are blocked until
+deferred-acs lands. After this PRD ships and backfills, expect 4
+archive actions to fire in rapid succession.
+
+**Notes for next /dream:** unblock conditions:
+- build-deferred-acs ships → check that backfill actually freed the 4
+  stuck PRDs; if not, the gap is more subtle than the iter logs admit
+- any wintermute Fleet 2 ship → Fleet 3 draft trigger (>=2 ships)
+- new user articulation
+- the wm-verify Fleet 1.5 bullet reaches its own trigger (declared-
+  deferred ACs exist in PRD frontmatter, motivating an attestation
+  walker)
+
