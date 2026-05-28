@@ -6,6 +6,7 @@
 **Vision:** [visions/continuity.md](visions/continuity.md)
 build_auto: false
 build_target: rust-cli
+deferred_acs: [5, 6, 7, 8]
 **Boot-gated:** live ACs gate on booting into `linux-wintermute`. Mock
 interface (`AGENTNS_SESSION_ID_OVERRIDE` env or `/tmp/agentns-mock`
 file) lets the binary iterate pre-boot.
