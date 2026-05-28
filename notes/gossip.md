@@ -1826,3 +1826,108 @@ Convention + copy-paste skeleton is the right level today.
   - No collision with cadence/chord/continuity/freshness/onramp/
     release-gate/daily-receipt visions.
 
+
+---
+
+## 2026-05-28T06:30  /dream  pass 17 — vision-fidelity (NEW vision)
+Drafted:
+  PRD-recall-surfaced-tracking.md      (v0.7.1)
+  PRD-recall-use-evidence.md           (v0.7.2)
+  PRD-recall-stop-hook-discriminate.md (v0.7.3) ← load-bearing
+  PRD-recall-doctor-utility.md         (v0.7.4)
+  PRD-recall-corpus-vacuum.md          (v0.7.5)
+Vision: visions/fidelity.md
+
+**Seed:** reflective sweep. recall-outcome-feedback shipped 2026-05-27
+acknowledged the gap explicitly ("memories that consistently help drift
+up") but its implementation can only detect "no contradiction" — not
+"actually used." The Stop hook reads `~/.cache/recall-weather/<sid>/
+recalled.json` and applies blanket `+0.02` accept on every surfaced id.
+
+**Live evidence (verified 2026-05-28T06:11Z):**
+  - 158 weather session dirs accumulated under
+    `~/.cache/recall-weather/` — each was a blanket-accept fire.
+  - `~/.claude/scripts/recall-stop.sh` lines 39-50 contain the
+    blanket-accept block (jq -r .[]? then `recall feedback --accept`).
+  - First fire of recall-search-inject (2026-05-28T05:35Z) surfaced 5
+    memories; only the self-referential one was actually used. Other 4
+    got the same reward.
+  - `src/index.rs` has feedback_count + recall_count but NOT
+    surfaced_count or used_count — the columns must be added.
+
+**Why this vision now:**
+  - recall-outcome-feedback just shipped (v0.6.0, 2026-05-27).
+    Fidelity is the natural v2 — refines the signal it created.
+  - wintermute-brain shipped 2026-05-28 — its quality is gated by
+    recall ranking, and the brain will compound any bias faster than
+    human-paced sessions did.
+  - The queue is already big; targeting v0.7.x means no version
+    collision with shipped work or recall-doctor-claims (v0.7.0
+    reservation).
+
+**Order (load-bearing notes for /build):**
+  - recall-surfaced-tracking (v0.7.1) is pure data plumbing — no
+    behavior change. Schema migration + new feedback flag + hook
+    writes. Smallest first; nothing else depends on PRD #2-5 until
+    this lands.
+  - recall-use-evidence (v0.7.2) is transcript scanning — new module,
+    new subcommand, no behavior change. Independent of #1 except for
+    consuming surfaced.json that #1 writes.
+  - recall-stop-hook-discriminate (v0.7.3) is THE behavior change.
+    Don't ship #4 or #5 without it or the metrics will be misleading
+    (no used_count data accumulating).
+  - recall-doctor-utility (v0.7.4) is purely diagnostic — extends
+    doctor with utility section. Safe to ship anytime after #3.
+  - recall-corpus-vacuum (v0.7.5) is the action layer — sweep that
+    decays / supersede-proposes / archives noise memories. Ships last.
+
+**Cross-vision notes:**
+  - Companion to `recall-outcome-feedback` (archived). Fidelity is
+    its v2.
+  - Adjacent to `freshness` (PRD-recall-doctor-claims v0.7.0). Both
+    extend doctor; different sections; no collision.
+  - Feeds `wintermute-brain` (shipped) — better ranking calibration
+    means better brain answers.
+  - No collision with cadence/chord/continuity/drift/daily-receipt/
+    wintermute/release-gate/handshake/onramp visions.
+
+**Notes for /build:**
+  - All 5 PRDs use build_target=rust-extend into ~/wintermute/recall.
+    Same pattern as recall-daemon, recall-outcome-feedback,
+    recall-observer-correlation that already shipped.
+  - First two PRDs are tightly scoped (one migration + one column
+    each; one new module each). 1-2 iters per PRD expected.
+  - Test fixtures in PRD ACs are designed to be writable as unit
+    tests inside the existing recall test suite — no new test
+    infrastructure needed.
+  - PRD #2 (recall-use-evidence) adds a transcript-scan dependency on
+    `~/.claude/projects/-home-jsy/<uuid>.jsonl` — verify AC1 (path
+    mapping) before doing more work. If the mapping is wrong the rest
+    of the PRD degrades to no-op (abstain-on-everything), which is
+    safe but defeats the purpose.
+  - PRD #3 (discriminate) carries a legacy-fallback path so weather
+    dirs from before PRD #1 keep working. AC5 verifies the fallback.
+
+**Open questions (also in vision §Open questions):**
+  - Cost of transcript scan in Stop hook latency — measured at <500ms
+    target (AC7 of PRD #2); gated by config flag default-off in
+    v0.7.2, default-on after measurement.
+  - Use-evidence false negatives from paraphrase — accepted; abstain
+    is no-op, so false-negative doesn't penalize (unlike
+    false-positive which doesn't exist by construction).
+  - Should `used_count` feed ranking weights directly? — out of scope
+    for v0.7.x; ranking pulls confidence which already reflects
+    discrimination. v2 idea.
+
+**Notes for next /dream:**
+  - Once PRDs #1-3 ship, check if the existing 158 weather session
+    dirs created drift worth recomputing. If yes, draft
+    PRD-recall-confidence-recalibrate that re-evaluates each memory's
+    confidence against post-v0.7.3 utility data.
+  - If the brain's recall layer ends up needing query-time
+    `used_count` ranking input (v2 idea above), draft
+    PRD-recall-ranking-utility-weight as Fleet 2 of fidelity.
+  - Cross-fleet trigger: if /build's Phase 6 generates a follow-on
+    PRD that touches the same code paths (e.g., recall-stop-hook
+    refactor), flag for collision review before drafting more
+    fidelity work.
