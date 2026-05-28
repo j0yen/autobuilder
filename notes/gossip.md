@@ -1734,3 +1734,95 @@ asserted via frontmatter (deferred-acs).
   speaker-relative). Verified during draft research.
 - /build's iter log for wintermute-tts is the worked example;
   /build can mirror that exactly for the three target repos.
+
+## 2026-05-28T06:05  /dream  pass 16 — Fleet 1.5 row 3 (bus-smoke convention)
+Drafted: PRD-wintermute-fleet-bus-smoke-convention.md
+Vision: visions/wintermute.md updated (Fleet 1.5 row 3 added)
+
+**Trigger:** Between pass 15 (22:35 PDT 5/27 = 05:35Z) and this pass,
+an orphan PRD landed at PRD-wintermute-fleet-agorabus-announce-fix.md
+(authored as /build Phase 6 follow-on during the fleet wire-up
+session). It fixes a one-line-per-repo bug: wm-tts/stt/dialog/brain
+each call `agorabus::Client::connect()` then immediately `.subscribe()`
+without `.announce()`, hitting the daemon's `announce_required`
+enforcement and exiting within ~1 s. The orphan PRD names the FIX;
+this pass names the STRUCTURAL GAP that allowed it to ship undetected.
+
+**Live evidence (verified 2026-05-27T22:55Z):**
+  - agorabus/src/daemon.rs:315-316 enforces "first message must be
+    Announce" (`announce_required` error + connection teardown).
+  - wm-tts/src/daemon.rs:815-824 has the bug; identical shape at
+    wm-stt:214,226 / wm-dialog:450,462 / wm-brain:1310,1320.
+  - wm-audio/src/daemon.rs uses the CORRECT pattern; wm-audio's
+    tests/wake_bus_smoke.rs:82-165 exercises it end-to-end via
+    in-process agorabus::run_daemon on a temp socket.
+  - wm-audio has THREE bus-smoke tests (wake/vad/reload). The other
+    four repos have ZERO. None of {tts,stt,dialog,brain}/tests/ has
+    a bus_smoke.rs file.
+  - `cargo test --release --test wake_bus_smoke` in wm-audio passes
+    in 1.4 s, no env witness needed.
+
+**Why a 16th pass instead of a rest-pace pass:** matches the freshness
+/ handshake / pass-15 single-PRD precedent. Real new evidence (orphan
+PRD landed AND structural verification of the bug class confirmed
+across 4 repos AND wm-audio's reference impl confirmed) PLUS a clear
+shape (mirror hardware-smoke-convention exactly, but for protocol-level
+wire-up instead of hardware witnessing). Not dreaming past research:
+the convention file, the 4 backfill targets, the wm-audio reference,
+all verified live this session.
+
+**Why a convention rather than a typestate or a shared crate:**
+typestate would be a wider agorabus API change requiring its own
+research; shared crate is premature with 4 consumers and one pattern.
+Convention + copy-paste skeleton is the right level today.
+
+**Notes for /build:**
+  - Ship `PRD-wintermute-fleet-agorabus-announce-fix.md` FIRST (one-
+    line patch per repo, single tick across all four). Without the
+    fix, the new bus_smoke.rs tests fail with announce_required —
+    which is correct test behavior pre-fix, but means /build can't
+    archive bus-smoke as green until the fix lands.
+  - build_target=mixed (1 convention doc + 4 rust-extend touches
+    across repos in the autobuilder workspace).
+  - No skill changes, no version bumps, no library edits.
+  - Each new bus_smoke.rs follows wake_bus_smoke.rs verbatim except
+    for the daemon-under-test and the expected event topic. ~80-120
+    LOC per file.
+  - AC7 is the anti-cargo-cult gate: each new test must contain an
+    explicit `.announce(...)` BEFORE any `.subscribe(...)` or
+    `.publish(...)`. A test that connects-without-announcing
+    reproduces the bug instead of catching it.
+
+**Notes for next /dream:** unblock conditions:
+  - Bus-smoke-convention ships AND announce-fix ships → next Fleet 2
+    PRD draft (browser, desktop, etc.) must reference the convention
+    in its acceptance criteria. /dream's drafting checklist for
+    Fleet 2 needs the hook.
+  - ≥2 wintermute Fleet 2 ships → Fleet 3 trigger remains (brain
+    shipped per CLAUDE_SELF 2026-05-28; need one more — browser,
+    desktop, screen-narrate, mail, calendar, or music).
+  - Any drift Fleet 1 ship (drift-fix-self-review-dream /
+    tool-manifest / skill-doctor — all still queued).
+  - build-deferred-acs ships → check whether /build routes future
+    hardware/process-level ACs to deferred-acs or to the
+    witness/smoke patterns.
+  - daily-receipt fleet ship (any of summarize / haiku / stamps /
+    archive / yearend-letter).
+  - New user articulation.
+
+**Cross-fleet notes:**
+  - Sibling to pass 15's hardware-smoke-convention: same structural
+    shape (convention doc + scaffolded test files + no
+    skill/version/binary changes), different test surface (protocol
+    vs hardware), different gating (CI-runnable vs env-witness).
+  - PRD-agorabus-boot-handshake (handshake vision Fleet 1) targets a
+    different race (at-boot orphan subscribers in
+    agorabus-session-start.sh, not in-daemon Client misuse). No
+    collision; both can ship parallel.
+  - Drift vision's tool-manifest + skill-doctor could grow a future
+    Fleet 2 entry that flags `Client::connect` call sites missing a
+    follow-up `.announce` — captured as PRD §5 out-of-scope bullet,
+    not drafted this pass.
+  - No collision with cadence/chord/continuity/freshness/onramp/
+    release-gate/daily-receipt visions.
+

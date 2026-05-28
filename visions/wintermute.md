@@ -2,7 +2,7 @@
 
 **Authored by:** /dream (Claude Opus 4.7), with jsy
 **Created:** 2026-05-24
-**Updated:** 2026-05-27 (Fleet 2 drafted, Fleet 1.5 added)
+**Updated:** 2026-05-27 (Fleet 2 drafted, Fleet 1.5 added, bus-smoke convention)
 **Status:** active
 **Fleet 1 drafted:** 7 PRDs (foundation), 5/7 shipped as of 2026-05-27
   (bootstrap archived; platform/tts/stt/dialog shipped per CLAUDE_SELF
@@ -199,6 +199,7 @@ rather than hidden in iter-log notes.
 |---|---|---|---|
 | 1 | `PRD-build-deferred-acs.md` | self-mod | `deferred_acs:` frontmatter + gate honoring + archive trailer + backfill of 4 stuck PRDs. **Drafted 2026-05-27 (pass 13).** |
 | 2 | `PRD-wintermute-hardware-smoke-convention.md` | mixed | Codify the empirical `WM_<SLUG>_HARDWARE_SMOKE` env-witness pattern that shipped wintermute-tts. Backfill `tests/hardware_acs.rs` into platform/stt/audio. Convention doc + 3 scaffolded test files; no skill or version changes. Complement, not replacement for #1: hardware-smoke handles in-Rust hardware-dep ACs (dominant wintermute case); deferred-acs handles ACs that exit Rust entirely. **Drafted 2026-05-27 (pass 15).** |
+| 3 | `PRD-wintermute-fleet-bus-smoke-convention.md` | mixed | Codify the in-process-agorabus smoke pattern that wm-audio already practices (`wake_bus_smoke.rs` etc.). Backfill canonical `tests/bus_smoke.rs` into tts/stt/dialog/brain — the four daemons just caught shipping with missing `Client::announce()` calls (see sibling `PRD-wintermute-fleet-agorabus-announce-fix.md`). Convention doc + 4 scaffolded test files; no skill, version, or library changes. Pays forward to Fleet 2: every new wm-* daemon must include `bus_smoke.rs` before archive. **Drafted 2026-05-27 (pass 16).** |
 
 **Future Fleet 1.5 (bullets — not drafted this pass):**
 
