@@ -2716,3 +2716,79 @@ Notes for next /dream:
     claude), fire trigger (d) Fleet 2 onramp 5-bullet draft pass.
   - Carry same other watches: fidelity Fleet 1 first ship, chord/
     drift-fix user-gates, /triage --kind feedback bug.
+
+## 2026-05-28T12:30  /dream  no-fleet-pass (17th; bare /dream, harvest steady)
+
+Manual invocation, no topic seed. 17th consecutive no-fleet-pass.
+
+State delta vs pass-16 (~30 min ago):
+  - **agentns-claude**: no new commits past `90a808d` (iter-1 Stages 1+2
+    scaffold from 05:00 PT). Build manifest shows status=in_progress,
+    last_action=11:56:44Z. Autobuilder cycle has not advanced past
+    iter-1 within this 30-min window. Tree clean (no uncommitted edits).
+    Target dir present (build artifacts) but no `receipts/` populated
+    yet — Stage 3+ (release-gate) hasn't kicked off.
+  - **agentns/userspace/ C wrapper**: unchanged (still uncommitted,
+    pass-16 superseded-not-stalled framing stands).
+  - **Fleet 1 fidelity**: 0/5 shipped (~33.5h since drop, was ~33h at
+    pass-16 — clock advances, status unchanged).
+  - **/build blockers**: 5, all user-gate, identical set to pass-16.
+  - **recall reflective queue**: latest 10 reflective/self memories same
+    as pass-16 — all recalls=0. Persistent freshness signal.
+  - **agorabus**: 6 peers on bus this session (was 10 at pass-15 self-
+    review; some sessions exited normally). All paired sub+worker.
+  - **dirty trees**: per pass-16 self-review snapshot (agentns:7,
+    autobuilder:3, cradle-bak:3, memlog:1, provfs:1, recall:5,
+    peon-ping:2). Not re-scanned this pass (would steal `wchg since`
+    delta from self-review).
+
+Triggers from pass-16 (12:00Z), re-evaluated:
+  (a) agentns-claude Stage 3+ commit lands → UNMET (still at iter-1).
+  (b) fidelity Fleet 1 first ship → UNMET (0/5).
+  (c) cleanup decision on userspace/ → UNMET (no user response yet).
+  (d) install-step question → UNMET (no user response yet).
+  (e) new user articulation → MET in form (bare /dream) but no topic
+      carried; treated as "carry on" per the established 16-pass
+      rhythm.
+
+No PRDs drafted. Per rule 6: nothing on disk has changed enough to
+motivate a new component. The 30-min cadence between pass-16 and
+pass-17 is too short for the load-bearing Stage 3+ commit (autobuilder
+inner-loop cycles run on /build's 5-min timer, not /dream's 30-min
+timer; multiple build ticks should have fired but none produced a
+visible commit — autobuilder is presumably running internal iter-2
+verification work that doesn't surface as a top-level commit yet).
+
+**Carried user-offers (REPEATED from pass-16, no new info this pass):**
+
+  1. Cleanup decision: `~/wintermute/agentns/userspace/` C wrapper
+     options (a) commit as examples/, (b) `rm -rf userspace/`,
+     (c) leave as-is.
+  2. Install-step question: should the autobuilder cycle for
+     agentns-claude drive all the way to `cargo install --path . --root
+     ~/.local` automatically, or is the install step user-gate?
+
+Watch items carrying forward (unchanged):
+  - agentns-claude autobuilder Stages 3+ → release-gate (watch for
+    commits past `90a808d` and status transition past in_progress).
+  - fidelity Fleet 1 #1 first ship (recall-surfaced-tracking 0/5).
+  - chord-async-delegate / drift-fix-self-review-dream / etc:
+    5 blockers, all user-gate.
+  - /triage `--kind feedback` bug: single-evidence still.
+
+Notes for next /dream:
+  - The 17-pass arc warrants a pacing observation: /dream is running
+    every ~30 min between 21:00-06:30 (cron timer) plus user manual
+    invocations. Between cron + manual, /dream has fired 17 times
+    against the same harvest-mode state. The "no-fleet-pass" output
+    is not failure — it's the correct rule-6 response — but if /build
+    spends another 6+ hours without surfacing a Fleet 1 ship,
+    consider whether /dream's 30-min cadence is too aggressive for
+    the current system state. (A 2-hour or per-/build-tick cadence
+    might surface the same information with less compute.) Not a
+    PRD — a config knob.
+  - If user picks option (a) or (b) on the cleanup decision, pass-18
+    can act on it directly (rm or `mv userspace/ examples/`); no
+    PRD needed.
+  - If autobuilder lands Stages 3+ on agentns-claude, fire Fleet 2
+    onramp 5-bullet draft pass (PRD-onramp-* successors).
