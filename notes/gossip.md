@@ -2398,3 +2398,83 @@ Notes for next /dream:
   - **Watch chord-async-delegate / drift-fix-self-review-dream**:
     both `in_progress ticks=0`. They're blocked on classifier/user-
     gate, not on /build inertia. User-flip might be all they need.
+
+## 2026-05-28T11:00  /dream  no-fleet-pass (14th; harvest Fleet 1 fulfilled, agentns still uncommitted)
+
+Bare /dream ~30min after 10:30Z pass-13. FOURTEENTH /dream no-fleet-pass.
+One curation this pass: harvest vision flipped active→fulfilled.
+
+State delta since 10:30Z:
+
+  - **2 new autobuilder commits, both archival**: 0999a07 archives
+    PRD-learning-candidate-triage (shipped) + df88b74 archives
+    PRD-learning-candidate-prune (shipped). With prefilter shipped
+    earlier today (08:45Z), **harvest Fleet 1 is now 3/3 → vision
+    fulfilled**. Updated manifest: visions.harvest.status
+    active→fulfilled, fulfilled_at=2026-05-28T11:00:00Z, added a
+    pass_14_curation note. Eighth vision overall to reach fulfilled
+    (joining release-gate at pass 11).
+  - **agentns userspace work continues in flight, third pass without
+    a commit**: `~/wintermute/agentns/userspace/` has `agent-wrap.c`
+    (87 LOC, complete CLONE_NEWAGENT unshare wrapper with AGENT_INTENT
+    prctl handling; gracefully degrades to plain exec on ENOSYS/EPERM
+    with clear stderr; needs setcap cap_sys_admin+ep on installed
+    binary) plus a Makefile (gcc -O2 -Wall -Wextra -std=gnu11 -I..,
+    builds against ../include/uapi/linux/agent_namespaces.h). Both
+    files readable on disk, both untracked. No new commits in
+    ~/wintermute/agentns/ since a8a1845 (the kernel-side boot-hang
+    fix). Same shape as passes 12 + 13 — readable, complete-looking,
+    uncommitted. THREE consecutive passes now.
+  - **/proc/self/agent_session still 32 zeros** (kernel surface
+    unchanged; claude wrapping still the load-bearing gap).
+  - **recall reflective queue**: latest 10 reflective/self memories
+    all recalls=0 (consistent with self-review run 9's "8 stale
+    reflective entries >30d" finding; pattern persists). Not a
+    drafting trigger by itself but a continuing freshness signal.
+
+Triggers from 10:30Z:
+  (a) claude-agentns-wrap ships → UNMET (queued, ticks=0; agent-wrap.c
+      readable but uncommitted does not count as a Fleet 1 ship).
+  (b) fidelity Fleet 1 ≥3/5 shipped → 0/5 UNMET.
+  (c) new user articulation → bare /dream. UNMET.
+  (d) harvest triage ships + ≥10 drafts processed → **FIRST HALF MET**
+      (triage shipped at 0999a07). **SECOND HALF UNMET** (LC queue
+      at 0 drafts; consumer has not been exercised against post-
+      prefilter real production). Conjunction fails. Trigger (d)
+      does not fire because we have no empirical Fleet 2 signal
+      from "actually consumed live drafts" yet.
+
+No PRDs drafted this pass. Per rule 6: harvest Fleet 2 needs Fleet 1
+to have been *used*, not just *shipped*. Triage at ticks=0-against-
+real-drafts is shipped-but-unvalidated. Fleet 2 bullets in vision doc
+stay as bullets. Curation considered, none warranted beyond marking
+harvest fulfilled: 57 PRDs unchanged; 12 active visions + 1 newly
+fulfilled (harvest); nothing else needing reattachment.
+
+Watch items carrying forward:
+  - **claude-agentns-wrap commit**: third pass in flight without a
+    commit. The work is complete enough on disk to compile and run;
+    what's missing is just `cd ~/wintermute/agentns && git add
+    userspace/ && git commit && git push` plus an install step. If
+    a fourth pass still shows uncommitted state, that's worth a
+    user nudge — not a PRD, just an offer ("the agentns userspace
+    work has been ready to commit for 90+ min; want me to land it?").
+  - **harvest Fleet 2 unblock**: LC queue must cycle ≥10 real drafts
+    AND ≥1 produces a user-promoted memory before Fleet 2 PRDs can
+    cite live evidence. The prefilter ships+ships+ships discipline
+    eventually meets the threshold organically.
+  - **fidelity Fleet 1 #1**: recall-surfaced-tracking, smallest of
+    the 5, no deps. Still 0/5 after ~28.5h since drop. Watch for
+    first ship.
+  - **/triage skill `--kind feedback` bug**: still single-evidence
+    (one self-review hit at 09:34Z). Second independent surfacing
+    promotes to PRD.
+
+Notes for next /dream:
+  - Harvest is fulfilled — drop that vision from triggers list.
+    Next pass triggers: (a)(b)(c) unchanged, (d) replaced with
+    "agentns first commit lands" if pass 15 still shows uncommitted
+    userspace work (escalation from watch-item to trigger).
+  - If state delta remains bookkeeping-only across 4+ passes plus
+    harvest just fulfilled, consider whether the rest-pace pattern
+    is masking a stalled queue rather than indicating discipline.
