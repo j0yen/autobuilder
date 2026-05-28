@@ -1,0 +1,81 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "/home/jsy/wintermute/autobuilder/PRD-skill-doctor.md",
+  "intent_slug": "skill-doctor",
+  "created_at": "2026-05-28T11:23:00Z",
+  "root_motivation": "Skill text drifts from installed tooling: skills cite flags and subcommands that have been removed, renamed, or never existed. Claude follows skill prose as ground truth, so drift surfaces as confused tool calls and user-visible errors. The fix has to be machine-checkable (manual audits don't keep up) and review-gated (false positives are inevitable when parsing shell out of Markdown prose).",
+  "user_persona": "Joe Yen on wintermute, running Claude Code with ~25 SKILL.md files under ~/.claude/skills/. Wants `skill-doctor check` after a `tool-manifest sync` to surface drift as proposals he can promote, reject, or ignore — same idiom as `recall observe`.",
+  "unfakeable_metric": {
+    "name": "ac_passing_count",
+    "lower_is_better": false,
+    "harness_command": "cargo test --release --tests 2>&1 | grep -E '^test acceptance_' | wc -l",
+    "target": 10
+  },
+  "acceptance_criteria": [
+    {"id": "AC1",  "level": "MUST", "description": "cargo build --release green; cargo test --release --lib green on a fresh clone", "test": "tests/acceptance_ac1_build_test.rs"},
+    {"id": "AC2",  "level": "MUST", "description": "skill-doctor check against live ~/.claude/skills/ produces >=4 drift proposals matching the four live instances in visions/drift.md (or against pre-fix git state if drift-fix landed)", "test": "tests/acceptance_ac2_live_drift.rs"},
+    {"id": "AC3",  "level": "MUST", "description": "Proposals written under ~/.claude/skill-doctor/proposals/<ULID>.md with the schema in PRD §Proposal output (id, kind, created, status frontmatter + body)", "test": "tests/acceptance_ac3_proposal_schema.rs"},
+    {"id": "AC4",  "level": "MUST", "description": "Re-running skill-doctor check does not create duplicates for the same (skill_path, line, binary, drift_kind, detail) tuple; dedup by content hash", "test": "tests/acceptance_ac4_dedup.rs"},
+    {"id": "AC5",  "level": "MUST", "description": "skill-doctor proposals reject <ULID> flips status:rejected and the proposal disappears from `proposals list`", "test": "tests/acceptance_ac5_reject.rs"},
+    {"id": "AC6",  "level": "MUST", "description": "Missing tool-manifest is handled gracefully: friendly error directing to `tool-manifest sync`, exit code 2", "test": "tests/acceptance_ac6_missing_manifest.rs"},
+    {"id": "AC7",  "level": "SHOULD", "description": "False-positive rate <=30% on the live skill set: >=70% of proposals reflect real drift (manual review of first batch)", "test": "manual:first-batch-review-logged-in-postmortem"},
+    {"id": "AC8",  "level": "MUST", "description": "Proposal queue path created with mode 0700 (private to user), matching `recall observe` convention", "test": "tests/acceptance_ac8_perms.rs"},
+    {"id": "AC9",  "level": "MUST", "description": "Published to github.com/j0yen/skill-doctor under dual MIT+Apache-2.0 with README citing drift vision and tool-manifest dependency", "test": "manual:post-publish-check"},
+    {"id": "AC10", "level": "MUST", "description": "~/.local/bin/skill-doctor installed via bootstrap/install.sh and a row in ~/wintermute/REPOS.md", "test": "manual:install-and-repos-md-check"},
+    {"id": "AC11", "level": "MAY",  "description": "End-to-end loop close: one user-promoted proposal lands as a skill edit (user reviews, runs promote, applies, drift gone)", "test": "manual:loop-closure-receipt"}
+  ],
+  "scope": [
+    "Walk ~/.claude/skills/*/{SKILL.md,skill.md} (case-fold)",
+    "Extract shell invocations from fenced ```bash/```sh/```shell blocks AND single-line backtick-inline code in prose",
+    "Parse each candidate as [~/.local/bin/]<binary> [<subcommand>] [<flags>] (canonical shape)",
+    "Cross-reference each binary/subcommand/flag against ~/.claude/tool-manifest/manifest.json",
+    "Emit drift kinds: BinaryMissing, SubcommandUnknown, FlagUnknown, SkippedVersionOnly",
+    "Write proposal files at ~/.claude/skill-doctor/proposals/<ULID>.md",
+    "Dedup pending proposals by content hash so re-runs don't accumulate",
+    "CLI subcommands: check, proposals {list,show,reject,promote}",
+    "Mode 0700 on the proposals directory"
+  ],
+  "non_goals": [
+    "Auto-edit of skill files (Fleet 2 candidate drift-skill-doctor-fix)",
+    "Walking config files under ~/.config/** (Fleet 2 candidate drift-config-files)",
+    "Parsing multiline backslash-continuations, heredocs, or shell-variable-expanded commands",
+    "Shelling out to tool-manifest sync from inside skill-doctor (consumer's responsibility)",
+    "Modifying the manifest file"
+  ],
+  "hard_constraints": {
+    "rust_edition": "2021",
+    "target_kind": "cli",
+    "deny_unsafe": true,
+    "max_deps": 20,
+    "msrv": "1.85",
+    "additional": {
+      "binary_install_path": "~/.local/bin/skill-doctor",
+      "proposals_dir_mode": "0700",
+      "dual_license": "MIT+Apache-2.0",
+      "github_repo": "j0yen/skill-doctor",
+      "depends_on_runtime_file": "~/.claude/tool-manifest/manifest.json"
+    }
+  },
+  "five_whys_trace": [
+    {"why": 1, "q": "Why build skill-doctor?",
+     "a": "Skill text drifts from installed tooling; we've observed at least four live drift instances (pevent gc --dry-run, pevent gc --older-than 7d type mismatch, bpolicy status --format, missing binaries in self-review's bootstrap-symlinks, ctrace ls in dream)."},
+    {"why": 2, "q": "Why does that drift matter?",
+     "a": "Claude follows the skill text as ground truth. Stale invocations turn into broken tool calls during /self-review or /dream, surface as user-visible errors, and erode trust in the skill prose."},
+    {"why": 3, "q": "Why not catch it manually with grep?",
+     "a": "Skills change frequently enough that a one-off audit goes stale within days. Drift detection must be machine-checkable AND repeatable on demand (skill-doctor check) so it can be wired into self-review later."},
+    {"why": 4, "q": "Why a proposal queue instead of auto-editing the skill text?",
+     "a": "Parsing shell out of Markdown prose is inherently noisy; false positives are inevitable. Auto-edit on a noisy detector would corrupt skills. A review-gated queue lets the user accept/reject before any text changes — same trust model as `recall observe`."},
+    {"why": 5, "q": "Why mirror recall observe specifically?",
+     "a": "The user already has a working mental model for reviewing recall observe's proposal queue. Reusing the same idiom (proposal files, list/show/reject/promote subcommands) lowers cognitive load and reuses any tooling the user has built around that pattern."}
+  ],
+  "ambiguities_resolved": [
+    {"question": "Should skill-doctor auto-sync the manifest before checking?",
+     "resolution": "No. PRD §Notes for /build: consumers should call `tool-manifest sync` explicitly; skill-doctor reads the JSON file directly. Keeps skill-doctor a pure consumer with no transitive shell-out."},
+    {"question": "What happens if two skills reference the same drifting invocation?",
+     "resolution": "Write one proposal per occurrence (skill_path+line is part of the dedup tuple), so the user can fix them independently. PRD §Cross-skill diff handling."},
+    {"question": "What's the relationship to drift-fix-self-review-dream?",
+     "resolution": "Complementary, not blocking. drift-fix closes the four known cases; skill-doctor catches future drift. AC2 may verify against pre-fix git state if drift-fix has already landed."},
+    {"question": "Does AC11 (loop closure) gate publication?",
+     "resolution": "No — AC11 is the verified-completed receipt that proves the loop closes end-to-end. AC1-AC10 gate ship; AC11 is recorded post-ship when the first user-promoted proposal lands."}
+  ]
+}
