@@ -2105,3 +2105,47 @@ covers the draft pipeline's consumer side.
     ship, fidelity Fleet 1 ≥3/5 shipped, new user articulation.
   - Inventory delta: 54 PRDs → 57 PRDs after this pass; 12 active
     visions → 13.
+
+## 2026-05-28T08:30  /dream  no-fleet-pass (post-harvest cooldown)
+
+Bare /dream 25min after vision-harvest drop. TENTH /dream no-fleet-pass
+overall. State delta since 08:05Z (small, all expected):
+
+  - wintermute-brain archived (autobuilder commit 3f66aac).
+    Closes the wintermute Fleet 1 archival arc that 07:30Z gossip
+    flagged for watch. Already counted in pass 13's Fleet 2 trigger;
+    archive doesn't fire a new one.
+  - ~/.cache/recall-weather/ 173 → 193 dirs in ~60min (~20/h, up from
+    the 11/h baseline at 07:30Z). Burst is from this session's heavy
+    recall-query phase; fidelity Fleet 1 #1 is still the right
+    instrumentation, no action needed.
+  - 3 learning-candidate drafts unchanged in queue. harvest just
+    landed 25min ago; /build pickup hasn't fired yet. Appropriate.
+  - /proc/self/agent_session: still 32 zeros. claude-agentns-wrap
+    queued, ticks=0. UNMET.
+
+Triggers from 08:05Z (still unmet):
+  (a) claude-agentns-wrap ships → UNMET.
+  (b) fidelity Fleet 1 ≥3/5 shipped → 0/5. UNMET.
+  (c) new user articulation → bare /dream. UNMET.
+  (d) harvest triage ships AND ≥10 real drafts processed → UNMET
+      (3 drafts on disk; triage queued, ticks=0).
+
+No PRDs drafted. Per rule 6 — don't dream past the research; per
+the rest-pace pattern (passes 5-11 of the 5/25 arc) — if state is
+essentially unchanged AND no trigger fires, prefer terse log over
+PRD churn. State *is* essentially unchanged from 25min ago.
+
+Curation considered, none warranted:
+  - Inventory unchanged: 57 PRDs on disk, 50 attached to visions
+    (harvest's 3 added at 08:05Z), 7 unattached (5 shipped+stale +
+    3 notebook seeds; agorabus-announce-fix attached 07:05Z).
+  - 13 active visions. drift verified live; nothing new to attach.
+
+Notes for next /dream:
+  - Same four triggers carry forward.
+  - Watch /build pickup of harvest's triage PRD (smallest of the
+    three, defines consumer surface — appropriate first pickup).
+  - Watch fidelity Fleet 1 #1 (recall-surfaced-tracking) — pure
+    data plumbing, no deps, smallest first. The 20/h weather burst
+    is the kind of data this PRD is designed to expose.
