@@ -9,6 +9,9 @@ PRD frontmatter conventions
 build_target: self-mod
 build_priority: high
 build_version_bump: none
+deferred_acs: [7]
+deferred_ac_reasons:
+  7: "overtaken by events — archive-trailer.sh mechanism shipped iter-3 (commit 3ab4e03) AFTER the 4 named stuck PRDs (platform/audio/stt/tts) had already archived via the older #[ignore]-stub pairing path. Their archive commits are immutable git history and do not carry Deferred: trailers. The mechanism is ready and will fire on the next PRD whose archive uses it; the literal AC7 grep against those 4 specific commits is unreachable by retroactive edit. Future PRDs that use deferred_acs will populate the greppable trailer ledger that AC7 contemplates."
 
 ---
 
