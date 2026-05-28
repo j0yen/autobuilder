@@ -2792,3 +2792,150 @@ Notes for next /dream:
     PRD needed.
   - If autobuilder lands Stages 3+ on agentns-claude, fire Fleet 2
     onramp 5-bullet draft pass (PRD-onramp-* successors).
+
+## 2026-05-28T13:00  /dream  fleet-movement-pass (18th invocation; corrects pass-17 no-fleet framing)
+
+Manual /dream invocation from user, bare (no topic seed). 18th /dream pass in
+the harvest arc — but the no-fleet-pass label finally breaks. The 30 min
+between pass-17 (12:30Z) and pass-18 (13:00Z) carried four /build ticks that
+landed real fleet movement; pass-17's "agentns-claude iter-1 still load-
+bearing, nothing else moves" framing missed three other PRDs advancing.
+
+State delta vs pass-17 (live manifest @ 12:57:30Z `last_tick_at`):
+
+  - **provq SHIPPED** (continuity Fleet 1 #2). Three /build ticks landed
+    between 11:47Z (install) and 12:57Z (publish):
+      * iter-1 11:47Z: cargo build + install -Dm755 to ~/.local/bin/provq
+        (970848 bytes); 18 tests green (9 unit + 5 scan + 4 show);
+        `~/.local/bin/provq --version` → "provq 0.1.0".
+      * iter-2 12:57Z: wm-publish allowlist + wm-publish --slug provq;
+        repo public at https://github.com/j0yen/provq; REPOS.md row added
+        (Session / context section); committed to wintermute@6a1e676.
+    Verified-completed: AC1/AC2/AC3/AC8/AC9 paired; AC4-AC7 boot-gated
+    per PRD §Boot-gated header (live FUSE-overlay + LSM xattr surface).
+    Status held in_progress pending boot validation OR user-archive call.
+    **This is the first continuity Fleet 1 ship.** Trigger for Fleet 2
+    is "≥3 of 5 shipped" — 1/5 now, not 3/5; Fleet 2 draft pass does NOT
+    fire.
+
+  - **chord-claim iter-1 scaffold** (12:32Z, agorabus rust-extend).
+    Extended protocol.rs with `ClientMessage::ClaimAcquire/Release/List`
+    + new `ClaimRecord` struct (path/session_id/ttl_unix_secs/
+    acquired_unix_secs/reason). Daemon `BusState` gains `claims:
+    HashMap<canonical_path, ClaimRecord>` + `prune_expired_claims()`
+    called before every read/write. Three new handle_line arms; client
+    methods `claim_acquire/release/list`; nested CLI `agorabus claim
+    {acquire,release,list}` with `--force/--wait/--path/--session-id/
+    --format text|json` flags. cargo build --release green (25.76s);
+    cargo test --release 9/9 PASS (no existing tests broken). Next:
+    iter-2 writes AC tests, v0.1.0→v0.2.0 bump, commit + push via
+    wm-push --slug agorabus.
+
+  - **skill-doctor Stage 1+2 scaffold** (12:30Z).
+    /autobuilder sub-skill invoked; intent-card.json derived directly
+    from PRD §1-§5 + 11 ACs (no 5-Whys interview — PRD well-spec'd).
+    iter-0 baseline commit 463dbed on branch autobuilder/skill-doctor.
+    Tree: Cargo.toml + clippy.toml + deny.toml + rust-toolchain.toml +
+    src/{main,lib}.rs + tests/acceptance_template.rs +
+    agent/{intent-card,owner-map,test-map}.json + proof-lanes.toml +
+    scripts/. No remote yet (publish is Stage 6, gated by ACs green).
+    Next: Stage 3 iterate — implement extract.rs/check.rs/proposal.rs
+    against AC1-AC6+AC8 (harness-testable subset).
+
+  - **agentns-claude unchanged** since 11:56Z (iter-1 Stages 1+2
+    scaffold at 90a808d on `~/wintermute/agentns-claude/`); no new
+    commits, `target/autobuilder/receipts/` not yet populated.
+    Pass-17's framing of this as the load-bearing build was correct
+    but not exclusive — three other PRDs moved meaningfully alongside
+    it.
+
+  - **memlog-witness** (continuity Fleet 1 #3) flipped to
+    `needs_classification` at 12:15Z. The classifier likely surfaced
+    that `build_auto:false` on the PRD conflicts with the
+    2026-05-27 user directive ("Every PRD is buildable. No opt-outs.
+    ... if `build_auto` appears in an older PRD it's ignored").
+    Three continuity Fleet 1 PRDs carry the legacy `build_auto:false`:
+    memlog-witness (now classified), recall-session-stamp (still
+    queued, 0 ticks), session-postmortem (still queued, 0 ticks).
+    Per the new rule those flags are stale-by-policy. **Signal to
+    /build:** treat the three legacy `build_auto:false` continuity
+    PRDs as buildable; their queue position is the only thing
+    blocking. (Not a new PRD — a policy-compliance reminder.)
+
+Triggers from pass-17 re-evaluated:
+  (a) agentns-claude Stages 3+ commit lands → UNMET (still at iter-1).
+  (b) fidelity Fleet 1 first ship → still UNMET (0/5; ~34h drop-age).
+  (c) cleanup decision on agentns/userspace/ C wrapper → UNMET.
+  (d) install-step question (cargo install autopilot vs user-gate) →
+      indirectly answered by provq's path: /build did go all the way
+      to install -Dm755 + wm-publish autonomously, no user-gate. The
+      same path is available for agentns-claude once /autobuilder
+      finishes its release cycle.
+  (e) new user articulation → MET (bare /dream from user, no topic
+      carried). Treated as "show me where the system is and act on
+      anything you'd normally surface" per the 17-pass rhythm.
+
+No PRDs drafted per rule 6 (research doesn't motivate a new component).
+provq shipping is 1/5 toward the Fleet 2 trigger; the Fleet-2 onramp
+draft pass cited in pass-17 also does NOT fire (it gates on
+agentns-claude shipping, not provq).
+
+**Carried user-offers (UNCHANGED from pass-17, surfaces both still
+open):**
+
+  1. Cleanup decision: `~/wintermute/agentns/userspace/` C wrapper
+     options (a) commit as examples/, (b) `rm -rf userspace/`,
+     (c) leave as-is. (Now superseded by the autobuilder Rust path
+     per pass-16; this is a tidy-up call only.)
+  2. Install-step question for agentns-claude: should /autobuilder
+     drive all the way to `cargo install --path . --root ~/.local`
+     automatically (provq's path), or is the install user-gate? The
+     Fleet 1 onramp dependency chain (agentns-claude →
+     claude-agentns-wrap → continuity Fleet 1 ×4) unblocks only when
+     `which agentns-claude` resolves.
+
+**New user-offer surfaced this pass:**
+
+  3. Three continuity Fleet 1 PRDs (memlog-witness,
+     recall-session-stamp, session-postmortem) carry legacy
+     `build_auto:false`. Per the 2026-05-27 directive these are
+     buildable; memlog-witness already flipped to
+     `needs_classification`. /build can either (a) honor the new
+     rule and pick them up (`scan-prds.sh always emits build_auto:
+     true`), or (b) wait for the user to flip the frontmatter on
+     each of the three. Suggestion: honor the rule autonomously
+     since the directive is unambiguous; the user-offer here is to
+     confirm that interpretation.
+
+Pacing observation (carrying from pass-17):
+  - The 30-min /dream cadence DID catch a real ship event this pass.
+    Pass-17's "consider a slower cadence" suggestion was premature —
+    the cadence found something. Keep the 30-min cron schedule.
+  - Reflective memory recall rate remains at 0 across the latest
+    10 reflective/self entries; consider that an ongoing freshness
+    signal but not a new PRD draft (the recall-surfaced-tracking
+    PRD in Fleet 1 fidelity is the existing instrument for this —
+    waiting for that to ship before re-evaluating).
+
+Watch items carrying forward:
+  - agentns-claude Stages 3+ → release-gate (watch for commits past
+    90a808d and status transition past in_progress).
+  - chord-claim iter-2 AC tests + v0.2.0 bump + agorabus push.
+  - skill-doctor Stage 3 iterate (extract.rs/check.rs/proposal.rs).
+  - fidelity Fleet 1 #1 first ship (recall-surfaced-tracking 0/5).
+  - chord-async-delegate / drift-fix-self-review-dream / etc:
+    5 blockers, all user-gate.
+
+Notes for next /dream:
+  - If memlog-witness picks up per the legacy-build_auto:false
+    reading, the policy question is settled; remove the carry.
+  - If agentns-claude lands Stages 3+ and `~/.local/bin/agentns-
+    claude` becomes installable, fire the Fleet 2 onramp 5-bullet
+    draft pass (PRD-onramp-* successors per pass-15 spec).
+  - If chord-claim publishes (j0yen/agorabus v0.2.0), the chord
+    vision's claim-primitive bullet is satisfied; check chord vision
+    for next-bullet motivation.
+  - If skill-doctor reaches Stage 6 publish, the skill-doctor
+    bullet in (which vision? — verify) is satisfied.
+  - When continuity Fleet 1 reaches 3/5 shipped, the Fleet 2 draft
+    pass fires per the vision-doc trigger.
