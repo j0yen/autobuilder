@@ -2596,3 +2596,123 @@ Notes for next /dream:
     pending-PRD-update would be a real option then.
   - Same other watches carry: fidelity Fleet 1 first ship,
     chord/drift-fix user-gates, /triage --kind feedback bug.
+
+## 2026-05-28T12:00  /dream  no-fleet-pass (16th; agentns reframe — superseded, not stalled)
+
+Manual /dream invocation from user (~30min after 11:30Z pass-15). SIXTEENTH
+/dream no-fleet-pass. Pass-15's escalation plan fires, but the on-disk
+investigation REFRAMES the agentns story entirely. Correction below
+matters more than the no-fleet status.
+
+State delta since 11:30Z:
+
+  - **0 new autobuilder commits.** Manifest last_updated 11:52:16Z
+    (pre-pass-15). 52 PRDs queued, 13 visions active+1 fulfilled
+    (harvest, marked pass-14).
+  - **agentns parallel-impl discovered**: pass-12/13/14/15 all framed
+    `~/wintermute/agentns/userspace/agent-wrap.c` as "in flight" then
+    "stalled" then "user-nudge-time". The on-disk file IS stalled (~44h
+    since mtime 2026-05-26 16:00 PT), but it is no longer the load-
+    bearing path. **/autobuilder built the Rust version today** at
+    `~/wintermute/agentns-claude/` — committed at 90a808d "iter-1:
+    autobuilder Stages 1+2 scaffold from PRD-agentns-claude" with src/,
+    tests/, scripts/, Cargo.toml/lock, dual MIT/Apache LICENSE,
+    CHANGELOG, README. Manifest shows agentns-claude.status=in_progress,
+    last_action 2026-05-28T11:56:44Z (~50min before this pass), inside
+    the autobuilder Stages 1+2 scaffold cycle. The Rust impl is the
+    canonical PRD-agentns-claude shipping target (j0yen/agentns-claude).
+  - **The C wrapper is therefore superseded, not stalled.** It is
+    a hand-built predecessor from before the /autobuilder pipeline
+    kicked in. Per [[feedback_always_build_autobuilder]] memory: hand-
+    rolling is the wrong instinct; the autobuilder version is canonical.
+    Keeping the C wrapper uncommitted at this point is correct (it
+    would just be dead code in the agentns kernel-side repo). Either:
+    (a) commit as `examples/agent-wrap.c` for documentation of the
+    minimal C demonstration, or (b) `rm userspace/` since the Rust
+    impl is now the path.
+  - **/proc/self/agent_session still reads 32 zeros** — the unblock
+    is the Rust autobuilder build LANDING (Stage 3+ → release-gate →
+    ship) AND being installed at `~/.local/bin/agentns-claude`, then
+    PRD-claude-agentns-wrap (Fleet 1 onramp #2) wiring zsh/systemd to
+    route launches through it. C-version commit would NOT unblock
+    this — even if committed, nothing installs from agentns/userspace/
+    onto the path.
+  - **recall reflective queue**: latest 10 reflective/self memories
+    same as pass-15 — all recalls=0. Persistent freshness signal.
+
+Triggers from 11:30Z:
+  (a) claude-agentns-wrap ships → UNMET (Fleet 1 onramp #2; waits on
+      agentns-claude shipping first per dependency chain).
+  (b) fidelity Fleet 1 ≥3/5 shipped → UNMET (still 0/5; ~33h since drop).
+  (c) new user articulation → MET? (bare /dream from user). No topic
+      seed. Treated as "show me where the system is and act on
+      anything you'd normally surface."
+  (d) agentns first commit lands → REFRAMED: pass-15's framing assumed
+      the C version was the path. Today's truth is the Rust autobuilder
+      version IS landing (90a808d) and IS the load-bearing path. The
+      original trigger fires in spirit (Fleet 1 onramp #2 onramp gate
+      remains the install-and-wire step) but not on the artifact pass-15
+      named. Treating as MET-but-reframed: Fleet 2 PRDs (5 bullets in
+      vision-onramp doc) still wait for Stages 3+ to complete the
+      autobuilder cycle on agentns-claude AND `~/.local/bin/agentns-claude`
+      to actually be installable.
+
+No PRDs drafted. Per rule 6: the on-disk situation does not motivate a
+new component. The hand-built C wrapper is not a new PRD — it is a
+cleanup decision. The autobuilder Rust build is in active progress; we
+do not draft "ship this PRD" PRDs.
+
+**User-offer surfaced this pass (REVISED from pass-15):**
+
+  1. Cleanup decision: `~/wintermute/agentns/userspace/` has 87-LOC C
+     wrapper + Makefile + compiled binary, ~44h since mtime, never
+     committed. The Rust autobuilder version at `~/wintermute/agentns-
+     claude/` is now canonical. Options:
+       (a) Commit C as `examples/agent-wrap.c` (documents the minimal
+           kernel-side userspace use; ~90 LOC vs whatever-the-Rust-
+           CLI-grows-to).
+       (b) `rm -rf userspace/` (clean break — Rust is the path).
+       (c) Leave as-is (untracked, harmless but accumulating
+           "stalled work" misreadings in future dream passes).
+  2. Install-step question: is the autobuilder cycle for agentns-claude
+     intended to drive all the way to `cargo install --path . --root
+     ~/.local` automatically, or does the install step land in
+     user-gate territory? The Fleet 1 onramp dependency chain
+     (agentns-claude → claude-agentns-wrap → continuity Fleet 1 ×4)
+     unblocks only when `which agentns-claude` resolves.
+
+Watch items carrying forward:
+  - **agentns-claude autobuilder Stages 3+ → release-gate**: this is
+    the live load-bearing build. Watch for new commits beyond 90a808d
+    in `~/wintermute/agentns-claude/` and status transition past
+    in_progress.
+  - **fidelity Fleet 1 #1**: recall-surfaced-tracking still 0/5
+    (~33h since drop).
+  - **chord-async-delegate / drift-fix-self-review-dream / etc**:
+    5 blockers, all user-gate, all carried.
+  - **/triage `--kind feedback` bug**: single-evidence still.
+
+Meta-observation for /dream rule 11+ pass arc:
+  - Pass-12/13/14/15 all carried the C wrapper as a watch item without
+    `ls` of sibling repos. Pass-16 found the autobuilder Rust version
+    by surveying `~/wintermute/` more broadly, not just by `stat`-ing
+    the named file. Lesson for next pass: when an artifact has been
+    "stalled" for ≥2 passes, broaden the search beyond the named file
+    — adjacent repos and active /build manifest entries often reveal
+    that the framing was wrong, not just the freshness.
+  - 16 consecutive no-fleet-passes is now decisively a pattern. Not
+    necessarily wrong — the queue at 52 PRDs and 13 visions is large,
+    and the rule-6 honesty bar is high — but worth noting that
+    /dream's "draft" output has not fired in 16 cron + manual invokes.
+    The system shape is currently "harvest existing, do not propose
+    new" until something Fleet 1 actually ships and earns the right
+    to its Fleet 2.
+
+Notes for next /dream:
+  - If user picks option (a) or (b) above, capture in pass-17 gossip;
+    no new PRD needed (cleanup, not feature).
+  - If agentns-claude lands (build manifest status changes from
+    in_progress to shipped + LICENSE-tagged push to j0yen/agentns-
+    claude), fire trigger (d) Fleet 2 onramp 5-bullet draft pass.
+  - Carry same other watches: fidelity Fleet 1 first ship, chord/
+    drift-fix user-gates, /triage --kind feedback bug.
