@@ -2215,3 +2215,90 @@ Notes for next /dream:
   - **Watch fidelity Fleet 1 first ship** (recall-surfaced-tracking
     smallest) — pure data plumbing, no deps, fires trigger (b)
     progress.
+
+## 2026-05-28T10:00  /dream  no-fleet-pass (12th; triage progress, LC queue dropped)
+
+Bare /dream ~30min after 09:30Z pass-11. TWELFTH /dream no-fleet-pass.
+State delta since 09:30Z is digestible-as-bookkeeping:
+
+  - **harvest triage progress**: ticks 1 → 2, status still in_progress
+    (not shipped). One /build tick happened against it between 09:30Z
+    and 10:00Z. Lead PRD still hasn't landed.
+  - **LC queue dropped 3 → 0 drafts**. .audit.log mtime unchanged
+    (08:35Z smoke entries); directory mtime advanced to 09:34Z. Three
+    real drafts that surfaced in every fresh SessionStart banner since
+    08:30Z are no longer on disk. Mechanism not directly observable
+    from this pass — most likely candidates: (i) /build's triage tick
+    at ticks=2 consumed them as part of the consumer-side smoke prove,
+    (ii) prune script (which is queued, ticks=0 per manifest — so this
+    is unlikely), or (iii) the user manually invoked /triage. **Worth
+    a watch in next /dream**: if drafts disappear without /triage
+    audit-log entries, the consumption path is silent — that's a
+    different observability gap than the existing harvest PRDs cover.
+  - **agentns userspace in-flight**: `~/wintermute/agentns/` has 5
+    modified files + `userspace/` untracked dir + `tests/
+    unshare-helper.c` untracked, no new commits since f5b24e0. Run-9
+    self-review (~02:00Z) noted "1 commit ahead" but local repo shows
+    no unpushed commits this pass; either the commit got pushed
+    between runs or run-9's count came from a stale snapshot. Either
+    way, claude-agentns-wrap PRD is *finally* under active
+    implementation — first time since it was drafted.
+  - **No new autobuilder commits** between 09:30Z and 10:00Z (only
+    b3da338 = pass-11 gossip). /build hasn't ticked anything else
+    forward in 30 min.
+  - **No new real drafts since 08:35Z** (.audit.log last entries are
+    smoke tests from prefilter ship + the duplicate-detect smoke).
+    First post-ship real-draft empirical evidence still pending.
+  - /proc/self/agent_session: 32 zeros. UNMET.
+
+Triggers from 09:30Z (still ALL unmet):
+  (a) claude-agentns-wrap ships → UNMET (queued, ticks=0; userspace
+      work in flight but not committed; PRD-claude-agentns-wrap.md
+      from onramp vision is the load-bearing piece).
+  (b) fidelity Fleet 1 ≥3/5 shipped → 0/5 UNMET (all queued ticks=0).
+  (c) new user articulation → bare /dream this pass. UNMET.
+  (d) harvest triage ships AND ≥10 drafts processed → UNMET on both
+      counts (triage ticks=2 in_progress; 0 drafts on disk so the
+      ≥10 condition is *further* from satisfaction than at 09:30Z).
+
+No PRDs drafted. Per rule 6 — don't dream past the research; per the
+rest-pace pattern (passes 5-11 of the 5/25 arc and now 10/11/12 of the
+5/28 arc) — when state delta is digestible as bookkeeping and no
+trigger fires, prefer terse log over PRD churn. The triage progress
+tick and the unobserved LC queue drain are real signals but neither
+motivates a new vision: triage is *the* consumer being built; the
+queue drain mechanism is a watch-item for next /dream, not a PRD.
+
+Curation considered, none warranted:
+  - Inventory unchanged: 57 PRDs on disk, 50 attached to visions, 7
+    unattached (5 shipped+stale + 3 notebook seeds; agorabus-announce-
+    fix attached at 07:05Z this morning).
+  - 13 active visions; nothing new to attach.
+  - Self-review run-9 surfaced the 9th-consecutive `recall divergence
+    false-trigger` flag with explicit cost: "Has not been worth fixing
+    7 times in a row, but it's noise on every run now." A one-line
+    skill patch (exclude `recall/proposals/*.md` from file-count) or
+    a recall-side move would close it. Considered drafting a single-
+    PRD vision for /self-review noise reduction — declined this pass.
+    Reasons: (i) the fix is genuinely a 30-second mechanical patch,
+    not PRD-shaped work; (ii) freshness Fleet 2 has a
+    `freshness-on-recall` bullet that could naturally swallow it when
+    Fleet 1 ships; (iii) the user has the most efficient path
+    (`txn-edit` the skill template, two minutes). Logged here for
+    trace; if it shows up a 10th time, draft a one-line PRD then.
+
+Notes for next /dream:
+  - Same four triggers carry forward unchanged.
+  - **Watch LC queue mechanism**: if drafts disappear again without
+    corresponding .audit.log entries, that's a real observability gap
+    — possibly draft PRD-learning-candidate-audit-completeness as a
+    successor to harvest's triage. Hold this pass; gather one more
+    data point first.
+  - **Watch claude-agentns-wrap implementation**: agentns userspace/
+    dir is now active work. First time the trigger (a) PRD is
+    moving. If a commit lands and userspace registration produces a
+    non-zero `/proc/self/agent_session`, that's a vision-grade event
+    — onramp Fleet 1 will be partly fulfilled and continuity Fleet 1
+    becomes unblocked (5 PRDs all depending on it).
+  - **Watch fidelity Fleet 1 #1 first ship** (recall-surfaced-tracking,
+    smallest, no deps). Still 0/5 shipped after 24+ hours since drop.
