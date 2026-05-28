@@ -1362,3 +1362,111 @@ draft once when evidence demands. Discipline arc not violated;
 extended.
 
 [continuity]: ../visions/continuity.md
+
+## 2026-05-28T01:40  /dream  vision-wintermute Fleet 2 (twelfth pass, third draft pass)
+Bare `/dream` ~20h after 2026-05-27T05:30 onramp draft. Twelfth /dream
+pass in the arc. **Third draft pass.**
+
+**Why this pass drafted (clear Fleet 1 ship trigger):**
+The wintermute vision doc explicitly authorized Fleet 2 extend at
+">=3 of 7 Fleet 1 shipped." Current shipped count per CLAUDE_SELF
+changelog: 5/7 (bootstrap archived; platform/tts/stt/dialog all have
+"shipped" entries; only audio + brain remain queued). The 5/7 ship
+count and the explicit vision-doc trigger together fire cleanly.
+
+Plus a new user articulation (2026-05-27): the
+[always-commit-push-prds-and-work][feedback] feedback memory lands
+new rules — every PRD is auto-built (build_auto stripped from new
+drafts), commits + pushes are inline (no batching), no daily caps.
+Dream skill instructions updated to match; this is the first draft
+pass under the new defaults.
+
+**Drafted (1 vision update, 6 PRDs):**
+  - **visions/wintermute.md** updated: Fleet 1 section gains shipped
+    count (5/7); Fleet 2 section converted from bullets to drafted
+    table with sequencing + bumped-to-Fleet-3 list (news + glow).
+  - **PRD-wintermute-browser.md** — rust-cli, `wm-browser`,
+    chromiumoxide-based. Tools: open/read/click/type/back/find/
+    screenshot over `wm.browser.cmd`. A11y snapshot is canonical;
+    image-mode fallback via wm-screen-narrate. 10 ACs (AC10 live).
+    Calls out: no Rust Playwright binding exists — vision doc's
+    "Playwright" label was shorthand.
+  - **PRD-wintermute-desktop.md** — rust-cli, `wm-desktop`,
+    atspi-rs + xdotool via baton. Tools: apps/focus/read_window/
+    click/type/key/find. Reuses j0yen/baton (shipped 2026-05-24).
+    AT-SPI bus auto-enable in install.sh. 10 ACs (AC10 live).
+  - **PRD-wintermute-screen-narrate.md** — rust-cli,
+    `wm-screen-narrate`, scrot/grim + Claude messages API vision.
+    Tools: describe/read_text/find_in_image/screenshot. Defaults
+    to focused window (privacy); per-day soft budget; logs cost
+    to recall. 10 ACs (AC10 live).
+  - **PRD-wintermute-mail.md** — rust-cli, `wm-mail`, async-imap +
+    lettre + freedesktop SecretService. Tools: inbox/read/send/
+    search/mark_read/delete/folders. send + delete through
+    wm-dialog verbal confirm. IMAP IDLE for new-mail signal.
+    wm-bootstrap extended with /mail credential page. 10 ACs.
+  - **PRD-wintermute-calendar.md** — rust-cli, `wm-cal`, minicaldav
+    + ical. Tools: today/range/add/find/delete/calendars/
+    set_calendar. add + delete through verbal confirm. Reminders
+    via `wm.cal.event.upcoming` 5min before. wm-bootstrap /cal
+    page. 10 ACs.
+  - **PRD-wintermute-music.md** — rust-cli, `wm-music`, mpris-rs
+    over zbus. Tools: players/play/pause/toggle/next/prev/
+    now_playing/set_volume. Control-only; provider catalog/launch
+    explicitly out of scope. Smallest ship in Fleet 2. 10 ACs.
+
+**Vision Fleet 1 counts (state delta since 2026-05-27T05:30):**
+  - continuity: 5 PRDs, 0 archived; PRD-agentns-claude unchanged
+  - chord: 4 PRDs, 0 shipped
+  - cadence: 7 PRDs, 0 shipped
+  - **wintermute: 7 PRDs, 1 archived + 4 binary-shipped per
+    CLAUDE_SELF → 5/7 effective. Fleet 2 NOW 6 PRDs drafted**
+  - freshness: 1 PRD, 0 shipped
+  - handshake: 1 PRD, 0 shipped
+  - release-gate: 2 PRDs, **BOTH SHIPPED → vision fulfilled**
+    (publish-allowlist + push-allowlist both in PRDs-archive/;
+    also PRD-build-changelog-prepend-fix shipped as adjacent)
+  - onramp: 3 PRDs, 0 shipped (substrate state unchanged:
+    agent_session still zeros; memlog group still missing;
+    provfs still names comm:awk for autobuilder writes)
+Total: 8 visions, **36 queued PRDs** (was 30+3 onramp + 5 backlog
+adds + 6 Fleet 2 new − 3 release-gate shipped = ~36; precise count
+in `ls PRD-*.md` = 35 after this pass since wintermute-platform/
+tts/stt/dialog still in queue dir pending archive).
+
+**Notes for /build:**
+  - **release-gate is closed** — both wrappers shipped. push +
+    publish path is now durable, no longer the structural blocker
+    described in 2026-05-26 gossip.
+  - **wintermute Fleet 2 is six fresh queued PRDs.** Sequencing
+    hint per vision update: browser/desktop are the big two
+    (~1 autobuilder cycle each); music is the cheapest first ship
+    (~30 min). Mail/calendar require the wm-bootstrap extension
+    arm — if those are picked first, factor in the bootstrap
+    side-edit. screen-narrate uses Claude vision API + cost
+    budget; touch the claude-api skill on first build.
+  - **Two wintermute Fleet 1 PRDs still queued + likely unshipped
+    in code:** wintermute-audio + wintermute-brain. Brain is the
+    capstone; audio is the perception gate for the rest of Fleet 1.
+    Worth knowing if /build is choosing between Fleet 1 completion
+    vs Fleet 2 starts.
+  - **substrate gaps unchanged**: /dev/memlog group/udev still
+    missing; agentns wrap still missing; provfs comm-fallback still
+    coarse. Onramp Fleet 1 (3 PRDs from prior pass) all still
+    queued.
+
+**Notes for next /dream:** unblock conditions:
+  - Any Fleet 1 ship from continuity/chord/cadence/freshness/
+    handshake/onramp/wintermute (audio or brain) — five of these
+    have NEVER shipped a Fleet 1 PRD; first ship for any of them
+    would warrant a refresh pass.
+  - Any wintermute Fleet 2 ship — would close one of the new ones
+    and rebalance the queue.
+  - New user articulation OR new substrate landing (kernel rebuild
+    with memlog ownership rule; agentns wrap landing in a Claude
+    launcher; etc.)
+  - >=2 wintermute Fleet 2 ships → consider drafting Fleet 3
+    (voice-profile, voice-clone, emergency, quiet-hours,
+    multi-user, undo, offline-persona).
+
+[feedback]: ~/.claude/projects/-home-jsy/memory/feedback_always_commit_push.md

@@ -2,9 +2,13 @@
 
 **Authored by:** /dream (Claude Opus 4.7), with jsy
 **Created:** 2026-05-24
+**Updated:** 2026-05-27 (Fleet 2 drafted)
 **Status:** active
-**Fleet 1 drafted:** 7 PRDs (foundation)
-**Fleets 2–3:** captured as bullets; future `/dream extend wintermute`
+**Fleet 1 drafted:** 7 PRDs (foundation), 5/7 shipped as of 2026-05-27
+  (bootstrap archived; platform/tts/stt/dialog shipped per CLAUDE_SELF
+  changelog but archive pending; audio + brain still queued)
+**Fleet 2 drafted:** 6 PRDs (action layer) — 2026-05-27 `/dream extend`
+**Fleet 3:** captured as bullets; future `/dream extend wintermute`
 
 ---
 
@@ -143,18 +147,31 @@ All seven PRDs carry `build_auto: true` (user override of the default
 - Sonnet vs Opus default for the brain — Sonnet is the chatty-day
   default; Opus is opt-in for deep questions to manage cost+latency.
 
-## Fleet 2 — Action layer (future `/dream extend wintermute`)
+## Fleet 2 — Action layer (drafted 2026-05-27)
 
-- `wintermute-browser` — Playwright headed Chromium control
-- `wintermute-desktop` — AT-SPI tree reading + xdotool injection
-- `wintermute-screen-narrate` — AT-SPI + OCR + Claude vision
-  ("what does my screen say right now?")
-- `wintermute-mail` — IMAP/SMTP read + compose
-- `wintermute-calendar` — caldav
-- `wintermute-music` — MPRIS player control
+Six PRDs drafted; sequencing browser+desktop first (biggest unlocks),
+screen-narrate composes with desktop, mail/calendar/music independent
+and parallel. All `build_target: rust-cli`. No new external substrate
+required beyond what Fleet 1 already arranges.
+
+| # | PRD | Binary | Notes |
+|---|---|---|---|
+| 1 | `PRD-wintermute-browser.md` | `wm-browser` | chromiumoxide (CDP); no Rust Playwright binding exists |
+| 2 | `PRD-wintermute-desktop.md` | `wm-desktop` | atspi-rs + xdotool via baton |
+| 3 | `PRD-wintermute-screen-narrate.md` | `wm-screen-narrate` | scrot/grim → Claude vision messages API |
+| 4 | `PRD-wintermute-mail.md` | `wm-mail` | async-imap + lettre + freedesktop SecretService |
+| 5 | `PRD-wintermute-calendar.md` | `wm-cal` | minicaldav + ical (CalDAV only; OAuth out of scope) |
+| 6 | `PRD-wintermute-music.md` | `wm-music` | mpris-rs over zbus; control only, not playback |
+
+**Sequencing:** browser and desktop are the two large foundations
+(both ~1 autobuilder cycle each). screen-narrate composes with
+desktop but works standalone. mail/calendar/music are independent
+and small; music is the cheapest ship.
+
+**Bumped to Fleet 3 (not drafted this pass per dream rule 6 — no
+direct user articulation, no End-state pin):**
 - `wintermute-news` — RSS + summarize-and-read
-- `wintermute-glow` — visual ambient state indicator (moved from
-  Fleet 1 — non-blocking for first-usable version)
+- `wintermute-glow` — visual ambient state indicator
 
 ## Fleet 3 — Personalization, safety, offline (future)
 
