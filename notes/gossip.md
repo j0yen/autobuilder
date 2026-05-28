@@ -2149,3 +2149,69 @@ Notes for next /dream:
   - Watch fidelity Fleet 1 #1 (recall-surfaced-tracking) — pure
     data plumbing, no deps, smallest first. The 20/h weather burst
     is the kind of data this PRD is designed to expose.
+
+## 2026-05-28T09:30  /dream  no-fleet-pass (harvest 1/3 shipped delta)
+
+Timer-cadence /dream 57min after 08:33Z pass-10 commit. ELEVENTH
+/dream no-fleet-pass. State delta since 08:33Z is small but contains
+the first real harvest-fleet ship:
+
+  - **PRD-learning-candidate-prefilter SHIPPED + archived** at 08:45Z
+    (autobuilder 4280bb9, 12min after 08:33Z gossip). Harvest fleet
+    now 1/3 shipped. Audit log
+    `~/.claude/scratch/learning-candidates/.audit.log` shows 6 smoke
+    rows at 08:34-08:35Z exercising score thresholds + dup detection;
+    classifications look correct. Real-world signal still pending —
+    no Stop hook has emitted a real draft since prefilter went live
+    (latest real draft is 01:35 PDT = 08:35Z, smoke tests run shortly
+    after at 08:34Z timestamps). First post-ship session-end will be
+    the empirical evidence point.
+  - wintermute-hardware-smoke convention picked up iter-3 docs
+    (autobuilder da767c8 at ~08:50Z) — Fleet 1.5 motion continues.
+  - wintermute-brain archived (autobuilder 3f66aac at 08:30:58Z) —
+    already counted in pass-13/Fleet-2 trigger; archive closes the
+    bookkeeping.
+  - 3 learning-candidate drafts unchanged in queue (3 files; latest
+    01:35 PDT = 08:35Z). Triage in_progress ticks=1; not yet ready
+    to consume them.
+  - /proc/self/agent_session: 32 zeros. claude-agentns-wrap queued
+    ticks=0. UNMET.
+
+Triggers from 08:30Z (still unmet):
+  (a) claude-agentns-wrap ships → UNMET (queued, ticks=0).
+  (b) fidelity Fleet 1 ≥3/5 shipped → 0/5 (all queued, ticks=0).
+  (c) new user articulation → bare /dream this pass.
+  (d) harvest triage ships AND ≥10 drafts processed → triage
+      in_progress ticks=1; 3 drafts on disk; UNMET on both counts.
+
+**Curation this pass:** harvest manifest entry updated with
+`prefilter_shipped_at: 2026-05-28T08:45:07Z` + audit evidence pointer +
+`pass_11_curation` note. Mechanical bookkeeping; no PRD content
+changed.
+
+No PRDs drafted. Per rule 6 — don't dream past the research; per the
+rest-pace pattern — if state delta is consumable in one bookkeeping
+line and no trigger fires, prefer terse log + manifest curation over
+PRD churn. The harvest fleet ship is a healthy data point but doesn't
+itself motivate a new vision (the existing triage + prune PRDs are
+the right next moves, both already drafted).
+
+Working-tree note (NOT this pass's responsibility): three untracked
+files in `~/wintermute/autobuilder/` belong to in-flight /build work:
+`.run-ambient/` (ambient-compositions notebook), `intent-cards/
+confidant.intent-card.json` (cadence/chord scratch), `notes/
+conventions/hardware-smoke.md` (Fleet 1.5 convention doc). /build to
+commit when ready; this commit stages only gossip + dream manifest.
+
+Notes for next /dream:
+  - Same four triggers carry forward.
+  - **Watch harvest triage ship** — that gives us first real
+    consumer-side data. The 3 stale drafts (still surfacing in every
+    fresh session's banner) are the canonical regression test.
+  - **Watch first real post-prefilter Stop hook emit** — the audit
+    log will show the score + decision; if a session that previously
+    would have emitted 1-3 noise drafts now emits 0 or 1 high-score
+    draft, prefilter's working as designed.
+  - **Watch fidelity Fleet 1 first ship** (recall-surfaced-tracking
+    smallest) — pure data plumbing, no deps, fires trigger (b)
+    progress.
