@@ -9,6 +9,7 @@
 build_auto: true
 build_target: mixed
 build_priority: high
+deferred_acs: [1, 2, 5, 8]
 
 ---
 
