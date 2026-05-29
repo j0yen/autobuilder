@@ -89,10 +89,31 @@ Drafted this pass (5):
    output, or low local confidence** — degrading to Sonnet rather than to
    silence. No weights vendored; endpoint URL + model id are config.
 
+### Brain backend ladder (jsy decision, 2026-05-29)
+
+jsy chose **local-first with an escalation ladder** for the brain backend:
+
+```
+local-3b (qwen2.5:3b, DEFAULT)  →  local-8b (qwen3:8b)  →  Sonnet  →  Opus
+```
+
+- **Default tier is local-3b** — free, fast, serves the floor of turns.
+- **Switches move UP the ladder "when needed"** — both *manual* (a swap-for-
+  next-turn + set-default surface, generalizing wmd's existing
+  `swap-model`/`default-model`) and *automatic* (a tier returning `Escalate`
+  — `wm-local-llm`'s failure/low-confidence outcome — bumps to the next tier).
+- The two local tiers (3b/8b) are the same `wm-local-llm` client with different
+  `model` config; Sonnet/Opus are the existing Anthropic client. This is a new
+  component — **PRD-brain-backend-ladder** (rust-extend → wintermute-brain) — to
+  be drafted next. It supersedes the earlier "manual switch vs fallback vs
+  default" open question: the answer is *all three on one ladder, default local*.
+
 ## Order
 
 ```
 PRD-brain-prompt-cache   (independent; ship first — pure per-call saving)
+PRD-brain-backend-ladder (rust-extend wintermute-brain; consumes wm-local-llm;
+                          local-3b default + switches up to 8b/Sonnet/Opus)
 
 PRD-wm-router ──┬── PRD-wm-skills      (router dispatches to skills)
                 ├── PRD-wm-semcache    (router dispatches to cache)
