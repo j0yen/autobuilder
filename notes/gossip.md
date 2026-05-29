@@ -3792,3 +3792,74 @@ Open questions (vision OQs, none block v1):
     cancel) — deployment smoke test, not a unit AC.
   - Three config tables (dialog [timing] / audio [vad] / tts [voice]) vs
     one caregiver-facing file — unification is a homestead/onramp concern.
+
+## 2026-05-29T09:06:28Z  /dream  vision-almanac  (manual /dream, no topic)
+Drafted: PRD-almanac-schedule-store.md, PRD-almanac-tick-daemon.md,
+  PRD-almanac-speak-bridge.md, PRD-almanac-acknowledge.md,
+  PRD-almanac-missed-to-kin.md
+Vision: visions/almanac.md
+Seed: manual /dream during the live companion push. companion can HEAR,
+  hearth speaks WARM, earshot WAITS + is legible, kin LINKS to jsy. The
+  missing panel: CLOCK-driven proactive speech. The whole fleet is
+  reactive (does nothing until summoned); an elder's real load is the
+  on-time recurring things she forgets — pills, meals, the nurse at 2.
+
+The gap (confirmed by reading source in Phase 1):
+  - No clock-driven proactive turn anywhere. wm-brain's only proactive
+    speech is recap_opener (daemon.rs:1352), fired once at session start.
+    BrainConfig (lib.rs:80-118) has timezone but nothing scheduled.
+  - wm-cal is NOT this: it's a CalDAV daemon for JSE's appointments —
+    SecretService creds (creds.rs:16), RRULE expansion (caldav.rs:397),
+    caregiver-facing by design (intent-card.json:17). Network+account
+    required. Wrong shape for "blue pill at 8am" on a maybe-offline desk.
+    almanac is LOCAL, recurring, opt-in, spoken — and CONSUMES
+    wm.cal.event.upcoming later rather than reimplementing CalDAV.
+  - Reuse, don't rebuild: speak-bridge emits through the EXACT proactive
+    path recap_opener uses — ReplyEvent{text,ts} -> publish(REPLY)
+    (daemon.rs:1352-1377) — so prompts inherit hearth's persona +
+    earshot's pace automatically.
+
+SCOPE BOUNDARIES (do not merge): almanac owns the CLOCK (when to prompt).
+  hearth owns WORDS/persona; earshot owns TEMPO/patience; kin owns
+  OFF-DEVICE delivery. almanac adds NO persona string, NO timing const,
+  NO CalDAV. acknowledge READS earshot's patience window; missed-to-kin
+  RIDES kin's wm.family.* channel.
+
+Order: schedule-store (new crate wintermute-almanac, foundation) ->
+  tick-daemon (publishes wm.almanac.due) -> {speak-bridge (wm-brain,
+  due->spoken), missed-to-kin (wm-almanac, wm.almanac.missed)} parallel
+  -> acknowledge (wm-brain, next wm.stt.final -> done/snooze/missed;
+  feeds missed-to-kin).
+
+Notes for /build:
+  - schedule-store is a NEW crate at ~/wintermute/wintermute-almanac
+    (companion-fleet member like wintermute-calendar). Ships alone as a
+    useful CLI; everything else extends it or wm-brain.
+  - speak-bridge + acknowledge BOTH edit wintermute-brain (subscribe-loop
+    dispatch + DaemonState). Serialize them (speak-bridge first, verified,
+    then acknowledge which adds PendingAck on top). Do NOT dispatch
+    concurrently on wm-brain.
+  - tick-daemon + missed-to-kin both extend wintermute-almanac; serialize
+    on that crate too (tick-daemon first — it defines the wm.almanac.due
+    envelope + agorabus client; missed-to-kin adds the watch/bridge).
+  - speak-bridge depends on the wm.almanac.due envelope shape from
+    tick-daemon — wait for tick-daemon's README envelope doc before
+    building speak-bridge.
+  - missed-to-kin bridges to kin's wm.family.message. kin is still a
+    VISION (family-* PRDs in flight per last gossip). missed-to-kin's
+    AC3 makes it ship WITHOUT kin (emits wm.almanac.missed only; kin
+    bridge is conditional). Build almanac without blocking on kin.
+  - hearth-* and earshot-* edit wm-dialog/wm-brain too — watch for
+    Cargo/lib.rs re-export churn forcing a rebase on speak-bridge/ack.
+  - Envelope contract (pin in wintermute-almanac README so all consumers
+    agree): wm.almanac.due {id,label,say,category,fire_ts};
+    wm.almanac.ack {id,state:done|snoozed|missed}; wm.almanac.snooze
+    {id,resume_ts}; wm.almanac.missed {id,label,category,missed_ts}.
+
+Open questions (vision OQs, none block v1):
+  - Caregiver remote editing of mom's routine -> kin/onramp/homestead
+    concern, not almanac (wm-almanac add is the v1 interface).
+  - Quiet hours / active_hours per entry — deferred (defaulting risks
+    silently skipping a real med prompt).
+  - Learned timing (shift from observed ack latency) — same learned-vs-
+    static deferral earshot made. Static local_time for v1.
