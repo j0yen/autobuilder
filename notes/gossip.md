@@ -3516,3 +3516,41 @@ both ship; left as a vision boundary note, not a PRD. If the user sets
 the API key and deploys to real hardware, the next undreamed surface is
 *remote operability* (how does jsy push a fix to a device he can't SSH
 into?) — not dreamed here because no remote device exists yet.
+
+## 2026-05-29T00:30  /dream  vision-thrift
+Drafted: PRD-brain-prompt-cache.md, PRD-wm-router.md, PRD-wm-skills.md,
+  PRD-wm-semcache.md, PRD-wm-local-llm.md
+Vision: visions/thrift.md
+Seed: jsy — "build in /autobuilder instead of the expensive anthropic API".
+  Grounded: wmd (wintermute-brain) is the fleet's ONLY API consumer (STT/TTS
+  already local). Two wastes found live: (1) MessageRequest has NO cache_control
+  despite intent-card AC3 targeting >=60% cache-read, AND compose_persona splices
+  volatile recall INTO the system prompt (busts caching); (2) every utterance
+  escalates to Sonnet unconditionally.
+
+Order: brain-prompt-cache (INDEPENDENT — ship first, pure per-call saving, no
+  new crates, zero quality tradeoff). Then wm-router (spine) ──< {wm-skills,
+  wm-semcache, wm-local-llm} build in parallel (all consume router's Route enum).
+
+Notes for /build:
+  - brain-prompt-cache is rust-extend into wintermute-brain; its AC5 is the
+    repo's EXISTING cache_hit_ratio_above_60pct test (intent-card AC3) — carry it
+    forward, don't invent a new one. Watch the existing serialization tests
+    ("system omitted when None") — backward-compat is AC2.
+  - The 3 new lib crates (router/skills/semcache/local-llm) reuse recall's `embed`
+    socket RPC (recall/src/daemon.rs:27 OPS includes "embed"; BGE-small 384-dim,
+    HashEmbedder fallback 256-dim). Do NOT stand up a second embedder. Clients
+    must be DIM-AGNOSTIC (read vector len from response).
+  - wm-local-llm wraps the OpenAI-compatible /v1/chat/completions PROTOCOL, not a
+    specific binary — jsy is testing a runtime (ollama/llama-server/llamafile)
+    in a parallel window. No weights vendored; endpoint+model are config.
+  - DO NOT wire any of this into wintermute-dialog yet — vision component 6
+    (dialog-FSM wiring) is intentionally NOT drafted; it waits on
+    PRD-wintermute-dialog-turn-fsm shipping (vision OQ1).
+  - family-intents overlap (vision OQ2): wm-skills' family skill must REUSE the
+    wm.family.* contract from PRD-wintermute-family-intents, not fork the topic.
+
+Open questions for jsy: confidence-floor + local-llm stakes-boundary calibration
+  (vision OQ4/OQ5 — local-llm route ships GATED OFF by default); does the brain
+  see pre-handled turns for continuity (OQ3 — lean: side-effecting skills write
+  recall, pure lookups don't).
