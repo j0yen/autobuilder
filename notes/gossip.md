@@ -3143,3 +3143,57 @@ Open questions (in visions/continuity-of-conversation.md):
     consent/boundaries is sibling vision *family-boundaries*.
   - recap_opener default-off: an unprompted continuity greeting is a
     personality/deployment call (companion.md OQ#4).
+
+## 2026-05-28T21:40  /dream  vision-vigil
+Seed: run-18 self-review re-opened "agorabus daemon stale binary" the SAME
+day it was resolved (runs 16-17). Caught live in Phase 1: pid 2138939 still
+exec'ing `/home/jsy/.local/bin/agorabus (deleted)` — the 20:52 reinstall
+unlinked its inode. Third axis of staleness, sibling to freshness (memory)
+and drift (skill text): a RUNNING PROCESS on stale code.
+Grounded in: `/proc/2138939/exe` (deleted) [kernel-truth]; provfs
+`user.prov.ts=1780026726` on ~/.local/bin/agorabus [LSM stamp]; agorabus
+`enum Command` has NO doctor/restart surface (read src/main.rs); `pevent list`
+empty (daemons unsupervised); journal runs 16/17/18 all hand-flag this.
+
+Drafted:
+- visions/vigil.md
+- PRD-binstale.md                 (rust-cli, new repo: read-only /proc+provfs detector)
+- PRD-binstale-source-cmp.md      (rust-extend binstale: `behind-head` vs git HEAD)
+- PRD-rollout.md                  (rust-cli, new repo: safe serialized rolling restart)
+- PRD-binstale-self-review.md     (shell: wire binstale scan into self-review B.5)
+- PRD-agorabus-doctor-selfstale.md (rust-extend agorabus: `agorabus doctor`)
+
+Order:
+  binstale
+     ├──► binstale-source-cmp
+     ├──► binstale-self-review
+     └──► rollout
+  agorabus-doctor-selfstale  (independent)
+
+Notes for /build:
+  - binstale + rollout are SEPARATE new repos by design: binstale is
+    read-only (safe), rollout mutates the live fleet (opt-in, --dry-run
+    default). Don't fold them together.
+  - binstale-source-cmp and binstale-self-review both depend on binstale;
+    ship binstale FIRST. rollout can ship on binstale alone (acts on
+    deleted-exe/inode-drift) but is better with source-cmp's behind-head.
+  - **DO NOT let any build of agorabus-doctor-selfstale (or anything that
+    reinstalls agorabus) kill the live bus daemon pid 2138939.** It is
+    deliberately escalated/not-restarted (run-18). Restarting the bus is
+    rollout's job under a chosen window, or the operator's. Build+install
+    only; no restart side effects.
+  - binstale-self-review degrades safely if binstale isn't installed yet —
+    can land in either order vs PRD-binstale.
+  - rollout requires a user-authored ~/.config/rollout/fleet.toml launch
+    recipe; it refuses daemons it has no recipe for. No auto-restart of
+    unknown processes.
+
+Open questions (in visions/vigil.md):
+  - Per-daemon launch recipe provenance (install.sh uses cargo install ->
+    ~/.cargo/bin but running binary is ~/.local/bin/agorabus via comm:install;
+    two paths). Discuss canonical launch path before any rollout apply.
+  - Brief peer-drop on bus restart acceptable, or need socket-handoff first?
+    (SessionStart handshake re-attaches — see PRD-agorabus-boot-handshake,
+    itself user-gate-blocked.)
+  - rollout-window-guard (precise turn-in-flight guard) deferred to Fleet 2;
+    depends on continuity-of-conversation's wm.brain.session.{start,end}.
