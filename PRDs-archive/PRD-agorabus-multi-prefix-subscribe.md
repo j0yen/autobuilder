@@ -5,8 +5,10 @@
 **Date:** 2026-05-28
 **build_target:** rust-extend
 **build_into:** /home/jsy/wintermute/agorabus
-**build_version_bump:** minor (semver: behaviour change, callers who relied on "last subscribe wins" will see all prior subscribes activated too)
+**build_version_bump:** minor
+**Version note:** semver minor — behaviour change; callers who relied on last-subscribe-wins will see all prior subscribes activated too.
 **Codename:** *only-the-last* — `subscribe()` called N times means only the Nth prefix matters.
+deferred_acs: [2, 3]
 
 ---
 
