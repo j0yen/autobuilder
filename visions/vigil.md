@@ -131,6 +131,74 @@ agorabus-doctor-selfstale       (independent; agorabus self-introspection)
   has no dependency — it can ship any time, but coordinate with the live
   agorabus rollout (see gossip / open questions).
 
+## Fleet 3 — the handover mechanism (drafted 2026-05-29)
+
+Fleet 1 detects staleness and orchestrates a fleet-wide rolling restart
+(`rollout`). It assumes a bus bounce is a *brief* drop. Phase 1 of the
+2026-05-29 dream proved that assumption false (see Open Questions →
+Restart vs reload). Fleet 3 makes a live agorabus bounce **non-
+destructive**, so `rollout` (and self-review's auto-fix) can act on the
+bus without stranding live sessions. These extend `~/wintermute/agorabus/`
+except where noted; they compose under `rollout` (which can call
+`agorabus reload` for the bus and fall back to SIGTERM+relaunch for
+daemons that lack it).
+
+1. **agorabus-client-reconnect** (`rust-extend` → `~/wintermute/agorabus/`,
+   `src/client.rs`) — **the keystone.** The long-lived `subscribe` client
+   detects EOF / `ECONNRESET`, then loops: reopen the socket with
+   bounded exponential backoff + jitter, re-`announce`, re-`subscribe`
+   to the same prefixes, and resume appending to the same inbox ndjson —
+   without re-running the SessionStart hook. Makes any daemon bounce
+   survivable for already-running sessions. Everything else in Fleet 3
+   depends on this existing.
+
+2. **agorabus-drain-notice** (`rust-extend` → `~/wintermute/agorabus/`,
+   `src/daemon.rs` + `src/main.rs`) — graceful shutdown. On SIGTERM the
+   daemon broadcasts `{"op":"bus.draining","resume_after_ms":N}` to all
+   subscribers before closing the listener, so reconnect clients stagger
+   their retry by a server-suggested delay (no thundering herd at
+   rebind). Consumed by the reconnect loop from PRD 1.
+
+3. **agorabus-state-persist** (`rust-extend` → `~/wintermute/agorabus/`,
+   `src/daemon.rs`) — finishes the persistence `daemon.rs:72` defers
+   ("claims … dropped on daemon restart per PRD-chord-claim §State
+   persistence"). Journals the claims table (and sticky intents) to
+   `~/.cache/agorabus/state.json` on mutation + on drain, rehydrates on
+   start. Survives a bounce so chord-claim locks and intents are not
+   silently dropped during a reload.
+
+4. **agorabus-reload** (`rust-extend` → `~/wintermute/agorabus/`, new
+   `Command::Reload` + `src/reload.rs`) — the *non-destructive* version
+   of vigil's one-command bounce. Verifies a fresh binary exists (built
+   ahead), records the pre-bounce peer count, sends the drain signal to
+   the running daemon, waits for clean exit, execs the new daemon, waits
+   for socket bind, then polls `peers` until the count recovers (via the
+   PRD-1 reconnect path) within a timeout — emits a verdict. Depends on
+   PRDs 1–3.
+
+5. **agorabus-reload-self-review** (`shell` → edits
+   `~/.claude/skills/self-review/SKILL.md` playbook
+   `agorabus_daemon_stale_binary`) — once the bounce is non-destructive,
+   the auto-fix can use `agorabus reload` and the ≤5-subscriber ceiling
+   (`SKILL.md:259`) can be lifted to a higher bound (reconnect handles
+   the disruption). Closes the 4+-run carried-forward escalation loop.
+   Depends on PRD 4 shipping + verified.
+
+**Order (Fleet 3):**
+
+```
+agorabus-client-reconnect   (keystone; ship first)
+   ├──► agorabus-drain-notice    (reconnect consumes the drain delay)
+   └──► agorabus-state-persist   (independent of drain; both extend agorabus — serialize commits)
+agorabus-reload                  (depends on reconnect + drain + persist)
+   └──► agorabus-reload-self-review  (depends on reload shipped + verified)
+```
+
+All four agorabus extends touch the same crate — **serialize** their
+/build cycles (reconnect → drain → persist → reload) to avoid lib.rs /
+Cargo churn rebases, same caution Fleet 1's gossip raised for the
+companion fleet.
+
 ## Fleet 2 (not drafted — honest deferrals per dream rule 6)
 
 - **rollout-window-guard** — refuse/defer restart of a voice daemon
@@ -165,13 +233,23 @@ agorabus-doctor-selfstale       (independent; agorabus self-introspection)
   rollout"). `agorabus-doctor-selfstale` and any `rollout` test must not
   collide with that in-flight human/skill-owned rollout. Coordinate via
   gossip.
-- **Restart vs reload**: agorabus is a single-process bus with no
-  graceful-handoff socket-passing. A restart drops + re-registers all
-  peers (the SessionStart handshake re-attaches them — see
-  `PRD-agorabus-boot-handshake.md`, itself blocked on user-gate). Is a
-  brief peer-drop acceptable for the bus, or does vigil need
-  socket-handoff first? Fleet 1 assumes brief-drop-is-acceptable +
-  handshake-re-attaches; revisit if it isn't.
+- **Restart vs reload** — **RESOLVED 2026-05-29 → see Fleet 3.** The
+  Fleet 1 assumption ("brief peer-drop acceptable; the SessionStart
+  handshake re-attaches peers") is **false for live sessions.** Phase 1
+  of the 2026-05-29 dream pass read `agorabus/src/client.rs` and found
+  the long-lived `subscribe` client has **no reconnect logic** — when
+  the daemon dies, the subscriber process dies with it. The SessionStart
+  hook (`agorabus-session-start.sh`) is the *only* re-registration path
+  and it fires only at session *start*, never on daemon death. So a live
+  bounce permanently strands every current session's subscriber until
+  that session restarts. This is the root cause of the carried-forward
+  stale-binary debt: self-review's `agorabus_daemon_stale_binary`
+  playbook escalates rather than auto-fixes whenever subscribers > 5
+  (`SKILL.md:259`), because the bounce is genuinely destructive
+  (`SKILL.md:270`: "other live Claude sessions will need to re-run their
+  SessionStart hook … a user-visible disruption"). Fleet 3 builds the
+  handover *mechanism* so the bounce is non-destructive — which is what
+  finally lets the auto-fix run within guardrails.
 - **provfs reliability for binaries**: the `(deleted)` signal is
   kernel-truth and needs no provfs. The `prov-stale` verdict relies on
   `user.prov.ts` being stamped on install — verified present on

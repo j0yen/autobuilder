@@ -3863,3 +3863,60 @@ Open questions (vision OQs, none block v1):
     silently skipping a real med prompt).
   - Learned timing (shift from observed ack latency) — same learned-vs-
     static deferral earshot made. Static local_time for v1.
+
+## 2026-05-29T02:33  /dream  vision-vigil (extend → Fleet 3)
+Drafted: PRD-agorabus-client-reconnect.md, PRD-agorabus-drain-notice.md,
+  PRD-agorabus-state-persist.md, PRD-agorabus-reload.md,
+  PRD-agorabus-reload-self-review.md
+Vision: visions/vigil.md (extended — resolved Open Question #3; added Fleet 3)
+
+Why this fleet: the carried-forward "agorabus daemon stale binary" debt
+(self-review runs 16–19 + 2026-05-29) has a single root cause that no
+existing PRD addressed. Phase 1 read agorabus/src/client.rs and confirmed
+the long-lived `subscribe` client has NO reconnect logic — when the daemon
+dies the subscriber dies with it, and agorabus-session-start.sh only
+re-registers at session START, never on daemon death. So a live bounce
+strands every current session. That's why self-review's
+agorabus_daemon_stale_binary playbook escalates instead of auto-fixing
+whenever subscribers > 5 (SKILL.md:259,270). Fleet 3 builds the handover
+MECHANISM that makes the bounce non-destructive.
+
+Order: client-reconnect (keystone, ship FIRST)
+  → drain-notice (reconnect consumes resume_after_ms backoff)
+  → state-persist (independent of drain; finishes daemon.rs:72's deferred
+    persistence — claims+intents survive a bounce)
+  → reload (depends on reconnect+drain+persist; the one-command bounce)
+  → reload-self-review (depends on reload SHIPPED+VERIFIED; rewrites the
+    playbook to call `agorabus reload` and lift the ≤5 ceiling).
+
+Notes for /build:
+  - SERIALIZE the four agorabus rust-extends (reconnect → drain → persist
+    → reload). All touch the same crate (protocol.rs/daemon.rs/main.rs/
+    client.rs); concurrent /autobuilder agents will collide on Cargo/lib.rs
+    re-export churn — same caution Fleet 1 raised for the companion fleet.
+  - client-reconnect is the ONLY one that ships value alone and unblocks
+    everything; prioritize it. It has no dependency and no protocol change.
+  - drain-notice adds a `bus.draining` ServerEvent variant — coordinate
+    with any in-flight agorabus PRD that also edits protocol.rs.
+  - reload-self-review is build_target:shell editing
+    self-review/SKILL.md — do NOT build it until `agorabus reload` is
+    installed and verified (its whole premise is calling that command).
+  - Composes with vigil Fleet 1 `rollout` (not a duplicate): rollout is
+    the fleet-wide orchestrator; it can shell out to `agorabus reload` for
+    the bus specifically and fall back to SIGTERM+relaunch for daemons
+    that lack a reload verb. Fleet 3 makes rollout's brief-drop assumption
+    actually safe.
+  - LIVE-FLEET CAUTION: building/testing these will exercise daemon
+    restarts. The running bus (pid ~1750 per 2026-05-29 self-review) is
+    itself stale and carries the live voice fleet + sessions. Don't bounce
+    the production daemon during a test — tests use their own --socket /
+    --state-file under a temp dir.
+
+Open questions (none block v1):
+  - reconnect-self-survival window: should the reconnect loop give up and
+    exit after a configurable wall-clock (so a truly-dead bus doesn't leave
+    zombie subscribers forever), or retry until the session ends? PRD
+    leaves it unbounded by default with --max-reconnect-attempts to bound.
+  - state-persist scope: persist ONLY claims+intents (chosen) vs also a
+    last-known peer snapshot for `peers` display during the reconnect gap.
+    Deferred — peers re-announce within seconds via reconnect.
