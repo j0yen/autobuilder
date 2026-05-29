@@ -3920,3 +3920,54 @@ Open questions (none block v1):
   - state-persist scope: persist ONLY claims+intents (chosen) vs also a
     last-known peer snapshot for `peers` display during the reconnect gap.
     Deferred — peers re-announce within seconds via reconnect.
+
+## 2026-05-29T03:00  /dream  vision-atlas (new)
+Drafted: PRD-atlas-core.md, PRD-atlas-edges.md, PRD-atlas-orphans.md,
+  PRD-atlas-render.md
+Vision: visions/atlas.md (new)
+Order: atlas-core (keystone, ship FIRST — node model + parsers)
+  → atlas-edges (attaches dependency edges to the nodes)
+  → atlas-orphans (divergence lint; needs nodes + edges)
+  → atlas-render (DOT/Mermaid/tree; needs nodes + edges)
+
+Why this vision: bare `/dream`, interactive. Phase 1 found the
+feature-space SATURATED and well-targeted — every evidence-motivated pain
+already has a PRD home (agorabus-stale → vigil Fleet 3 drafted tonight
+02:33; agentns all-zeros → PRD-claude-agentns-wrap; ctrace SessionEnd
+flake → PRD-ctrace-session-end-resilient; finding recurrence → docket).
+The one genuinely-uncovered gap is meta: the /dream end-state is "each
+PRD a node in a graph," yet NOTHING renders that graph. 107 PRDs / 24
+visions / 2 manifests / 3922-line gossip / 117-line REPOS.md — the edges
+are all written down (PRD `Vision:`+`build_into` frontmatter, build
+manifest `output_repo_path`/`iter_log`, dream manifest prds_drafted, our
+own `Order:` lines) but never joined. atlas is one read-only Rust CLI
+that joins them.
+
+Notes for /build:
+  - SERIALIZE the three rust-extends (edges → orphans → render). All
+    extend ~/wintermute/atlas; concurrent /autobuilder agents collide on
+    Cargo/lib.rs re-export churn — same caution every multi-extend fleet
+    raised (vigil Fleet 1/3, companion).
+  - atlas-core is the ONLY one that ships value alone and unblocks the
+    rest; build it first. New repo j0yen/atlas, no dependency, no store.
+  - orphans and render are independent of each other — order either way
+    after edges.
+  - atlas is READ-ONLY over the autobuilder corpus by design (AC asserts
+    fixture mtime unchanged). It will read this gossip file + both skill
+    manifests — but never writes them. Don't let an /autobuilder agent
+    "helpfully" add a write path.
+  - `atlas doctor` (from atlas-orphans) is exactly the fulfilled-vision
+    cross-reference /dream SKILL.md says it does by hand. Once orphans
+    ships+verifies, the natural capstone is a build_target:shell PRD
+    wiring `atlas doctor` into self-review — deliberately NOT drafted yet
+    (premise is calling installed+verified `atlas doctor`; mirrors how
+    vigil held agorabus-reload-self-review behind `agorabus reload`).
+    Left as vision OQ for next /dream extend atlas.
+
+Open questions (none block v1):
+  - atlas vs docket overlap: NO. docket = self-review FINDINGS get an
+    identity/lifespan; atlas = the vision/PRD/repo CORPUS gets a rendered
+    structure. They could meet later (atlas reports a stale-repo
+    divergence AS a docket finding) — future cross-vision bullet.
+  - edge source-of-truth: frontmatter `Depends on:` authoritative, gossip
+    `Order:` lines secondary/dashed. Pinned in atlas-edges README.
