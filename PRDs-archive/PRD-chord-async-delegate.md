@@ -1,6 +1,6 @@
 # PRD-chord-async-delegate
 
-Status: Draft v0.1
+Status: Shipped v1.0 (2026-05-29)
 build_auto: false
 build_target: shell
 build_into: /home/jsy/.claude/scripts
