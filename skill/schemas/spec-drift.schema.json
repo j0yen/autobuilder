@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "spec-drift.schema.json",
+  "title": "Spec-Drift Probe Receipt",
+  "description": "Output of scripts/spec-drift-probe.py — a Stage-2.5 ground-truth check that PRD-named CLI verbs exist in each tool's real --help surface. PRD: autobuilder-spec-drift-probe.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tools", "summary"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "spec-drift.v1"
+    },
+    "prd": {
+      "type": "string",
+      "description": "Absolute path to the probed PRD."
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "binary",
+          "found",
+          "asserted_verbs",
+          "actual_verbs",
+          "missing_verbs",
+          "verdict"
+        ],
+        "properties": {
+          "binary": { "type": "string" },
+          "found": { "type": "boolean" },
+          "asserted_verbs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "actual_verbs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "missing_verbs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["clean", "drift", "unavailable", "help_fails"]
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tools_checked", "drift_count"],
+      "properties": {
+        "tools_checked": { "type": "integer", "minimum": 0 },
+        "drift_count": { "type": "integer", "minimum": 0 },
+        "help_fail_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

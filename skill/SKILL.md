@@ -7,7 +7,7 @@ description: PRD-driven, rigorously validated Rust code generation. Use when the
 
 ## What this skill does
 
-Takes a PRD (file path or pasted text) and drives a 5-stage pipeline that yields a Rust project where every artifact is (a) generated from a structured `intent-card.json` derived via 4/5-Whys, (b) iterated under a narrow falsifiable advance-or-revert loop, (c) accompanied by per-iteration `EvidencePack` receipts and `FailureCapsule`s on crash, (d) gated by 7 receipts before declaring "ready," and (e) fed into a postmortem that queues self-improvement proposals.
+Takes a PRD (file path or pasted text) and drives a 5-stage pipeline that yields a Rust project where every artifact is (a) generated from a structured `intent-card.json` derived via 4/5-Whys, (b) iterated under a narrow falsifiable advance-or-revert loop, (c) accompanied by per-iteration `EvidencePack` receipts and `FailureCapsule`s on crash, (d) gated by 8 receipts before declaring "ready," and (e) fed into a postmortem that queues self-improvement proposals.
 
 ## When to invoke
 
@@ -33,8 +33,9 @@ Do NOT invoke for:
 ```
 PRD ──► Stage 1: Intake (5-Whys)         ──► intent-card.json
         Stage 2: Scaffold (locked harness) ──► <project>/ tree
+        Stage 2.5: Spec-Drift Probe         ──► spec-drift.json (block if PRD names absent CLI verbs)
         Stage 3: Iterate-and-Prove loop    ──► EvidencePack per iter, FailureCapsule on crash
-        Stage 4: Risk Gate (7 receipts)    ──► ready / blocked + diagnostic
+        Stage 4: Risk Gate (8 receipts)    ──► ready / blocked + diagnostic
         Stage 5: Postmortem + Self-Evolve  ──► gated proposal queued for review
 ```
 
@@ -69,6 +70,34 @@ Generate a project where harness is read-only, agent edits only `src/`:
 │   └── postmortem.md
 └── .github/workflows/                    ← CI mirror of local gate
 ```
+
+### Stage 2.5 — Spec-Drift Probe
+
+Run `scripts/spec-drift-probe.py <PRD-path>` after the Stage 2 scaffold,
+before entering the Stage 3 iterate-and-prove loop. The probe extracts every
+backticked CLI invocation the PRD names (e.g. `recall list --since 7d`,
+`letter-curate aggregate`), runs each binary's `--help`, and diffs the
+PRD-asserted subcommand verbs against the tool's real subcommand surface.
+
+- **exit 0** — no drift: every asserted verb exists, or the only flagged
+  tools are `unavailable` (binary not on `$PATH` — intentional future-state)
+  or `help_fails` (help unparseable / flat CLI — no positive surface to diff).
+- **exit 4** — drift: the PRD names a verb a real binary does not expose.
+  Abort before Stage 3 and surface `target/autobuilder/spec-drift.json` as the
+  diagnostic. This catches the cadence-bind-letters failure mode (PRD assumed
+  `letter-curate aggregate`; the binary only does `triage`/`show`/`list`)
+  before any /autobuilder cycle — or any parallel /build sibling branch — is
+  burned chasing a hallucinated verb.
+- **exit 2** — bad invocation (missing PRD path).
+
+Hedged inline mentions ("presumably `wm-tts metrics`", "e.g. `tool foo`") and
+non-clap help formats are treated conservatively (no drift) so the gate never
+false-positives on speculative future-design prose. `--strict` additionally
+blocks on `help_fails`.
+
+The verdict (`spec-drift.json`) is preserved as Receipt #8 in the Stage 4 gate
+once Stage 3 completes. Costs <2s. Receipt schema: `schemas/spec-drift.schema.json`
+(`spec-drift.v1`). PRD: autobuilder-spec-drift-probe.
 
 ### Stage 3 — Iterate-and-Prove
 
@@ -133,11 +162,12 @@ mutation data is absent (`null` — script skipped or not yet run), treat the
 term as 0 so the score stays defined. Phase 1 weights it; Phase 2 will gate
 on it (per PRD autobuilder-mutation-testing).
 
-### Stage 4 — Risk Gate (7 receipts)
+### Stage 4 — Risk Gate (8 receipts)
 
 | Receipt | Source | Pass condition |
 |---|---|---|
 | `intake` | Stage 1 | `intent-card.json` validates; all MUST-ACs declared |
+| `spec-drift` | Stage 2.5 | `target/autobuilder/spec-drift.json` `summary.drift_count == 0` |
 | `vti-plan` | Stage 2/3 | every changed path routed via `proof-lanes.toml`; confidence ≥ 0.70 |
 | `proof-receipt` | Stage 3 | test/proptest/fuzz/miri/deny green on `HEAD` |
 | `risk-gate` | Stage 3 | BAD_RUST audit clean (or only `advisory` findings with waivers) |
@@ -251,16 +281,20 @@ rather than rolling equivalents:
 │   ├── failure-capsule.schema.json
 │   ├── proof-receipt.schema.json
 │   ├── mutants-receipt.schema.json
+│   ├── spec-drift.schema.json            ← Stage 2.5 receipt (spec-drift.v1)
 │   └── merge-witness.schema.json
 ├── scripts/
 │   ├── intake.sh
 │   ├── scaffold.sh
+│   ├── spec_drift_probe.py               ← Stage 2.5 probe (CLI: spec-drift-probe.py symlink)
 │   ├── experiment-loop.sh
 │   ├── metric-harness.sh
 │   ├── run-mutants.sh
 │   ├── risk-gate.sh
 │   ├── postmortem.sh
 │   └── evolve.sh
+├── tests/
+│   └── test_spec_drift_probe.py          ← AC1-AC4/AC8 fixtures for the probe
 └── proposals/                            ← accumulated evolution proposals (gated)
 ```
 
