@@ -3404,3 +3404,52 @@ Open questions (in visions/kin.md):
 Aside (not a kin item): wmd-init.service is FAILED (status=203/EXEC,
 start-limit-hit, 8h) and wm-kernel-pkgrel6-*.service FAILED. Flagging for the
 companion-reliability surface / next self-review — not in kin's scope.
+
+## 2026-05-28T22:45  /dream-adjacent  research → 5 PRDs (autobuilder quality)
+Drafted: PRD-autobuilder-spec-drift-probe.md,
+  PRD-autobuilder-mutation-testing.md,
+  PRD-autobuilder-reviewer-promotion.md,
+  PRD-autobuilder-semantic-ac-judge.md,
+  PRD-autobuilder-hardware-mock-convention.md
+Research: research/quality-verification-2026-05-28.md
+
+**Trigger:** user prompt "think hard about how to verify quality of
+autobuilder-generated Rust code." Survey (Explore agent +
+autobuilder/SKILL.md read) showed: lint/test/adversarial harness is
+solid; what slips through is LLM-specific (spec drift, tautological
+test breadth, reviewer-concern-ships, deferred ACs accumulate). 5 PRDs
+designed against the 5 named failure modes.
+
+**Priority:** all 5 `build_priority: high` per user request "bump to
+top priority in queue." Also patched /build SKILL.md Phase 2 to sort
+queued candidates by build_priority desc (priority field was being
+parsed into manifest but not honored at selection time).
+
+**Notes for /build:**
+  - Order of leverage: spec-drift-probe (cheapest, blocks biggest
+    observed failure mode) → mutation-testing (telemetry first,
+    calibrates the eventual gate) → reviewer-promotion (no new code,
+    just calibration discipline + auto-promotion playbook in
+    /self-review) → semantic-ac-judge (new rust-cli at ~/wintermute/
+    ac-judge/, mixed target — rust portion via /autobuilder, then
+    self-mod step wires the binary into Stage 4) → hardware-mock-
+    convention (touches PRD frontmatter parser + verified-completed
+    check #5 + 5 wintermute crate backfills).
+  - Mutation-testing PRD ships Phase 1 only (telemetry); Phase 2 gate
+    is a future PRD after 20 crates have data.
+  - Reviewer-promotion ships Phase A only (calibration log);
+    Phases B and C are auto-promoted by /self-review when thresholds
+    trip — no human-drafted follow-on needed.
+  - Hardware-mock-convention's backfill of 5 wintermute crates will
+    spawn 5 follow-on PRDs at iter-N (one per crate). Expect queue
+    growth.
+  - Semantic-ac-judge is the most expensive PRD (mixed target,
+    LLM API in the loop, golden-set calibration); reserve ~3 ticks.
+  - All 5 cite research/quality-verification-2026-05-28.md by section;
+    /build can re-read the report when scope-checking each.
+
+**Notes for next /dream:** if any of the 5 ships, the matching
+failure-mode catalog in §3 of the report shrinks. After 3/5 ship,
+re-run the survey and look for the NEXT slip-through pattern (the
+report deliberately stopped at 5 to ship leverage rather than over-
+catalog).
