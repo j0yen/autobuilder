@@ -89,31 +89,73 @@ Drafted this pass (5):
    output, or low local confidence** — degrading to Sonnet rather than to
    silence. No weights vendored; endpoint URL + model id are config.
 
-### Brain backend ladder (jsy decision, 2026-05-29)
+### Switching strategy (LOCKED 2026-05-29)
 
-jsy chose **local-first with an escalation ladder** for the brain backend:
+The ladder, with Haiku as a cheap-cloud floor:
 
 ```
-local-3b (qwen2.5:3b, DEFAULT)  →  local-8b (qwen3:8b)  →  Sonnet  →  Opus
+local-3b (qwen2.5:3b)  →  local-8b (qwen3:8b)  →  Haiku  →  Sonnet  →  Opus
+   free, instant            free, ~1-3s          ¢, fast    $, fast    $$$
 ```
 
-- **Default tier is local-3b** — free, fast, serves the floor of turns.
-- **Switches move UP the ladder "when needed"** — both *manual* (a swap-for-
-  next-turn + set-default surface, generalizing wmd's existing
-  `swap-model`/`default-model`) and *automatic* (a tier returning `Escalate`
-  — `wm-local-llm`'s failure/low-confidence outcome — bumps to the next tier).
-- The two local tiers (3b/8b) are the same `wm-local-llm` client with different
-  `model` config; Sonnet/Opus are the existing Anthropic client. This is a new
-  component — **PRD-brain-backend-ladder** (rust-extend → wintermute-brain) — to
-  be drafted next. It supersedes the earlier "manual switch vs fallback vs
-  default" open question: the answer is *all three on one ladder, default local*.
+**"When needed" is decided TWICE — predict before, verify after.** The trap in a
+pure escalate-on-hard-failure ladder: `wm-local-llm` only signals `Escalate` on
+*hard* failures (timeout / empty / unreachable / truncated). A small model
+**confidently answering wrong** never trips that — and that is exactly the
+dangerous case for an elderly companion (a wrong medication answer generates
+fine). So switching combines pre-routing and post-verification.
+
+**Three mechanisms:**
+
+- **(A) Safety-first pre-route (override, cost-blind).** Flagged-stakes intents —
+  medication, medical symptoms, falls/emergency, acute emotional distress,
+  money — **skip local entirely** and start at a trusted cloud tier
+  (Sonnet/Opus). Non-negotiable; the most important rule in the system.
+- **(B) Cost-optimal pre-route — LOCAL-FIRST (jsy's choice).** For ordinary
+  turns, start at the *cheapest* tier predicted to clear the bar; default is
+  local-3b, climbing only when the verify gate or stakes demand it. Max saving;
+  leans hardest on the verify gate being good.
+- **(C) Verify-then-escalate.** After a *local* answer, a cheap instant gate
+  rejects empty / refusal ("I'm just an AI") / looping / wrong-language /
+  inappropriate-disclaimer output (optional one self-consistency re-roll for
+  borderline). Gate fail → climb one rung. Plus `wm-local-llm`'s hard-failure
+  fallback. This gate is a new component — **PRD-wm-verify**.
+
+**Three governors:**
+
+1. **Latency (voice) — FILLER WHILE ESCALATING (jsy's choice).** First-audio
+   target ~1.5–2.5s. If a climb would blow it, speak a short backchannel ("let
+   me think about that…", reusing the `companion-degrade` phrase bank) while the
+   higher tier generates, so a climb never reads as a dead pause.
+2. **Cost/quota governor.** Track spend; as a cap nears, raise the stakes bar for
+   cloud escalation and reserve Opus for top-stakes only. Adaptive, not static.
+3. **Conversational stickiness.** Inside an ongoing warm/emotional thread, hold
+   the tier — don't drop Sonnet→3b mid-heart-to-heart. A session "tier floor"
+   that decays as the topic shifts. Coherence beats marginal cost.
+
+**Feedback loop (future).** Log `(turn features, tier, escalated?, outcome,
+reaction)` and calibrate which intents the cheap tiers actually win. Ties to the
+backlog `recall-outcome-feedback` PRD. The strategy should *learn* its
+thresholds, not guess forever.
+
+**Manual switches** still ride on top — `swap-model <tier>` (next turn) +
+`default-model <tier>` (persistent), extending wmd's existing commands to span
+all five tiers.
+
+Implemented across: `wm-router` (A safety tag + B starting tier), `wm-local-llm`
+(generate + C-hard fallback, ✅ built), **`wm-verify`** (C-soft gate, new), and
+**`PRD-brain-backend-ladder`** (the orchestrator: applies policy + governors +
+stickiness + manual switches; relaxes the no-API-key-=-no-brain gate).
 
 ## Order
 
 ```
 PRD-brain-prompt-cache   (independent; ship first — pure per-call saving)
-PRD-brain-backend-ladder (rust-extend wintermute-brain; consumes wm-local-llm;
-                          local-3b default + switches up to 8b/Sonnet/Opus)
+
+wm-local-llm ──┐
+wm-verify   ───┼──► PRD-brain-backend-ladder  (orchestrator: 3b→8b→Haiku→Sonnet
+wm-router   ───┘                               →Opus; local-first; verify-gate
+                                               escalation; filler; governors)
 
 PRD-wm-router ──┬── PRD-wm-skills      (router dispatches to skills)
                 ├── PRD-wm-semcache    (router dispatches to cache)

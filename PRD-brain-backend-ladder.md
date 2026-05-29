@@ -1,14 +1,21 @@
 # PRD: brain-backend-ladder — local by default, climb only when needed
 
 **Author:** /dream (Claude Opus 4.8), for jsy
-**Status:** Draft v0.1
+**Status:** Draft v0.2
 **Date:** 2026-05-29
 **Vision:** visions/thrift.md
 **build_target:** rust-extend
 **build_into:** /home/jsy/wintermute/wintermute-brain
 **build_version_bump:** minor
-**Depends on:** wm-local-llm (path dep — the local backend client); composes-with PRD-brain-prompt-cache (the Anthropic tiers keep their cache breakpoints)
+**Depends on:** wm-local-llm (local backend client, ✅ built); wm-verify (the soft-failure gate that drives escalation); wm-router (supplies the starting tier + safety stakes tag); composes-with PRD-brain-prompt-cache (the cloud tiers keep their cache breakpoints)
 **Codename:** *ascent* — climb a rung only when the turn demands it.
+
+> **v0.2 (2026-05-29):** revised after jsy's locked switching strategy (vision
+> "Switching strategy"). Ladder gains a **Haiku** rung; escalation is now driven
+> by the **wm-verify** soft-failure gate (not just `wm-local-llm`'s hard
+> failures); adds **filler-while-escalating**, a **cost/quota governor**,
+> **conversational stickiness**, and honoring **wm-router's safety pre-route**
+> (high-stakes turns start cloud, skipping local). See Changelog.
 
 ## TL;DR
 
@@ -58,7 +65,8 @@ pub enum Backend { Local, Anthropic }
 pub struct Tier { pub name: String, pub backend: Backend, pub model: String } // model: ollama id or canonical claude id
 // Built-in default ladder, lowest→highest, overridable in brain.toml:
 //   local-3b (Local, qwen2.5:3b) → local-8b (Local, qwen3:8b)
-//                                → sonnet (Anthropic) → opus (Anthropic)
+//     → haiku (Anthropic, claude-haiku-4-5)   ← cheap-cloud floor
+//     → sonnet (Anthropic) → opus (Anthropic)
 ```
 
 `brain.toml` gains: `default_tier` (default `"local-3b"`), a `[backends.local]`
@@ -69,16 +77,36 @@ to the `sonnet` tier on load.
 ### 2.2 LadderClient (implements the dispatch)
 
 A `LadderClient` that owns the local client (`wm-local-llm`) + the optional
-`AnthropicClient` and the resolved ladder. For a turn it:
-1. Starts at the active tier (pending override > default_tier).
-2. Dispatches: `Local` tier → `wm-local-llm::generate(prompt, sink)`;
+`AnthropicClient` + the `wm-verify` gate + the resolved ladder. For a turn it:
+
+1. **Starting tier:**
+   - If `wm-router` tagged the turn **high-stakes** (medication, medical, falls,
+     acute distress, money) → start at the configured trusted tier (Sonnet/Opus),
+     **skipping local entirely** (safety override; cost-blind).
+   - Else → start **local-first** at `pending_override > default_tier`
+     (default `local-3b`) per jsy's locked posture.
+2. **Dispatch:** `Local` tier → `wm-local-llm::generate(prompt, sink)`;
    `Anthropic` tier → the existing `collect_messages` path (carrying the
    prompt-cache breakpoints from PRD-brain-prompt-cache untouched).
-3. **Auto-escalation:** a `Local` tier returning `LocalOutcome::Escalate{reason}`
-   advances to the next tier up and retries. Bounded — never climbs past the top
-   tier; the climb is logged with the reason.
-4. Terminal failure (top tier unreachable / no key for an Anthropic tier) routes
-   to the existing degrade path, never a panic.
+3. **Escalation is driven by TWO signals (climb one rung on either):**
+   - *Hard failure* — `LocalOutcome::Escalate{reason}` from `wm-local-llm`
+     (timeout/unreachable/empty/truncated).
+   - *Soft failure* — a `Local` tier `Answer` that `wm-verify` rejects
+     (refusal/looping/wrong-language/disclaimer/etc.) before it is spoken.
+   Bounded — never climbs past the top tier; each climb is logged with its
+   reason (hard vs. soft + the specific reason).
+4. **Filler while escalating (voice latency governor):** if a climb would exceed
+   the first-audio budget, emit a short backchannel via the TTS path (reuse the
+   `companion-degrade` phrase bank) while the higher tier generates, so a climb
+   never lands as a dead pause.
+5. **Cost/quota governor:** track cloud spend; as a configured cap nears, raise
+   the stakes threshold required to escalate into cloud tiers and reserve Opus
+   for top-stakes only.
+6. **Conversational stickiness:** maintain a per-session "tier floor" — within an
+   ongoing warm/emotional thread don't drop below the tier that's been handling
+   it; the floor decays on topic change.
+7. **Terminal failure** (top tier unreachable / no key for an Anthropic tier)
+   routes to the existing degrade path, never a panic.
 
 ### 2.3 Switches
 
@@ -96,18 +124,24 @@ outcome — "I can't reach the bigger brain right now" — not a crash).
 
 ## 3. Acceptance criteria
 
-1. A built-in tier ladder `local-3b → local-8b → sonnet → opus` is defined;
-   `default_tier` loads from brain.toml and defaults to `local-3b`; a legacy
-   `default_model = "sonnet"` config still resolves (to the sonnet tier).
+1. A built-in tier ladder `local-3b → local-8b → haiku → sonnet → opus` is
+   defined; `default_tier` loads from brain.toml and defaults to `local-3b`; a
+   legacy `default_model = "sonnet"` config still resolves (to the sonnet tier).
 2. With default tier `local-3b` and an injected fake local backend that returns
-   `Answer`, a turn is served by the local backend and the Anthropic client is
-   **never called** — asserted via injected fakes (reuse the existing
-   `LlmClient` fake-injection test pattern).
-3. **Auto-escalation:** a local tier whose backend returns
-   `LocalOutcome::Escalate` causes a retry on the next tier up; a test with a
-   fake local backend (Escalate) + a fake higher tier (Answer) asserts the reply
-   came from the higher tier, the climb is bounded (stops at the top tier), and
-   the escalation reason is logged.
+   an answer `wm-verify` ACCEPTS, the turn is served by the local backend and the
+   Anthropic client is **never called** — asserted via injected fakes (reuse the
+   existing `LlmClient` fake-injection test pattern).
+3. **Dual-signal escalation:** a local tier climbs one rung on EITHER (a) a
+   `LocalOutcome::Escalate` (hard failure) OR (b) a local `Answer` that
+   `wm-verify` REJECTS (soft failure). A test with a fake local backend whose
+   output `wm-verify` rejects + a fake higher tier (accepted answer) asserts the
+   reply came from the higher tier; a second test does the same via the hard
+   `Escalate` path. Both assert the climb is bounded (stops at the top tier) and
+   the reason (hard vs. soft + specific reason) is logged.
+3b. **Safety override:** a turn tagged high-stakes by `wm-router` starts at the
+   configured trusted cloud tier and the local backend is **never called** —
+   asserted with an injected high-stakes tag + fakes (cost-blind; this overrides
+   the local-first default).
 4. `swap-model local-8b` sets the next-turn tier (consumed after one turn, like
    `pending_model` today); `default-model opus` sets the persistent tier;
    `swap-model sonnet` (legacy short name) still works. Unknown tier → error.
@@ -126,9 +160,29 @@ outcome — "I can't reach the bigger brain right now" — not a crash).
    PRD-brain-prompt-cache — a test asserts the ladder path does not strip them.
    (Gated on brain-prompt-cache having landed; if not yet merged, assert the
    ladder passes the request through unmodified.)
-9. `cargo test` green; `cargo clippy` introduces no new warnings beyond the
+9. **Filler while escalating:** when a climb is triggered and the first-audio
+   budget would be exceeded, a backchannel phrase is emitted to the TTS/reply
+   path before the higher tier's answer — asserted with a fake sink + an injected
+   slow higher tier (the sink receives the filler, then the real answer).
+10. **Conversational stickiness:** a per-session tier floor holds across turns in
+   a thread (a turn after an escalation to Sonnet does not silently drop back to
+   local-3b within the same thread) and decays on topic change — asserted with a
+   two-turn fixture.
+11. `cargo test` green; `cargo clippy` introduces no new warnings beyond the
    wintermute-brain baseline; MSRV 1.85; no let-chains; child-lock and existing
    `pending_model` AC tests still pass.
+
+## 5. Changelog
+
+- **v0.2 (2026-05-29)** — jsy locked the switching strategy (vision "Switching
+  strategy"): local-first posture, filler-while-escalating, and a **Haiku**
+  cheap-cloud rung (`3b→8b→haiku→sonnet→opus`). Escalation is now **dual-signal**
+  (hard `wm-local-llm` failures + soft `wm-verify` rejects), gaining deps on
+  `wm-verify` and `wm-router`. Added safety-override pre-route (AC3b), filler
+  (AC9), cost/quota governor + stickiness (AC10). v0.1's simple
+  Escalate-only ladder is a strict subset of this.
+- **v0.1 (2026-05-29)** — initial: linear `3b→8b→sonnet→opus`, auto-escalate on
+  `wm-local-llm` `Escalate` only, manual switches, no-API-key gate relaxation.
 
 ## 4. Non-goals
 

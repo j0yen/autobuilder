@@ -3709,3 +3709,26 @@ Open questions (vision OQs, none block v1):
     until persona-config proves the data shape.
   - One register across two repos (brain.toml vs wm-dialog phrases) can drift;
     consistency check deferred until both are config-sourced.
+
+## 2026-05-29T01:30  /dream  vision-thrift  switching strategy LOCKED (+1 PRD, 2 revised)
+Drafted: PRD-wm-verify.md (rust-lib ~/wintermute/wm-verify) — soft-failure gate.
+Revised: PRD-brain-backend-ladder.md -> v0.2 ; PRD-wm-router.md -> v0.2 (both have
+  in-file Changelog sections; v0.1 behavior is a strict subset).
+jsy locked the switching strategy (vision "Switching strategy" section):
+  - Ladder: local-3b -> local-8b -> HAIKU -> Sonnet -> Opus (Haiku added).
+  - Posture: LOCAL-FIRST (cheapest tier that clears the bar; default 3b).
+  - Latency: FILLER WHILE ESCALATING (backchannel via companion-degrade phrases).
+  - "When needed" decided TWICE: predict (router stakes/start tier) + verify
+    (wm-verify gate). Pure escalate-on-hard-failure was blind to a 3b answering
+    confidently WRONG — wm-verify closes that.
+Notes for /build:
+  - wm-router v0.2: Route is now Skill/CacheLookup/Brain{stakes}. NO LocalLlm
+    route anymore — the brain ladder owns local-vs-cloud. Safety stage runs FIRST
+    (high recall) and tags Stakes::HighStakes(class) so the ladder skips local for
+    medication/medical/emergency/distress/money. AC4 = 100% high-stakes recall.
+  - brain-backend-ladder v0.2 now DEPENDS ON wm-verify + wm-router (not just
+    wm-local-llm). Escalation = dual-signal (hard wm-local-llm Escalate + soft
+    wm-verify reject). Build order: wm-local-llm(done) + wm-verify + wm-router
+    -> brain-backend-ladder.
+  - wm-verify is pure/in-process (no network, no model). Conservative toward
+    Reject but AC6 forbids false-rejecting normal answers (would nuke local-first).
