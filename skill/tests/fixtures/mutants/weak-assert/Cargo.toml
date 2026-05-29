@@ -1,0 +1,13 @@
+[package]
+name = "weak-assert"
+version = "0.1.0"
+edition = "2021"
+
+# AC2 fixture (PRD autobuilder-mutation-testing): a deliberately weak assertion.
+# The fn returns 5 but the test only checks `> 0`. cargo-mutants can replace the
+# body with another positive constant (e.g. 1) which STILL satisfies `> 0`, so
+# that mutant SURVIVES (missed). Expected: mutants_alive_count >= 1 and
+# mutation_kill_rate < 1.0.
+
+[lib]
+path = "src/lib.rs"

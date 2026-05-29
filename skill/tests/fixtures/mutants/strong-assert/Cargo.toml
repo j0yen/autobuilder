@@ -1,0 +1,12 @@
+[package]
+name = "strong-assert"
+version = "0.1.0"
+edition = "2021"
+
+# AC1 fixture (PRD autobuilder-mutation-testing): an exact-equality assertion.
+# The test pins the return value precisely, so every value-replacing mutation
+# cargo-mutants injects (e.g. returning 0, 1, or -1 instead of 2) is CAUGHT.
+# Expected: mutation_kill_rate == 1.0.
+
+[lib]
+path = "src/lib.rs"
