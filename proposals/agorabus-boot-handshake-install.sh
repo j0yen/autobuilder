@@ -55,19 +55,26 @@ if [ ! -f "$LIVE" ]; then
     exit 1
 fi
 
+# The live path is a symlink into ~/wintermute/dotfiles (the dotfiles repo is
+# the single source of truth). Resolve it so we write the real file and keep
+# the symlink intact — a naive `install` over the symlink would replace it
+# with a regular file and silently desync the dotfiles repo.
+TARGET="$(readlink -f "$LIVE")"
+
 bash -n "$DRAFT" || { printf 'ERROR: draft failed bash -n\n' >&2; exit 1; }
 
 TS=$(date +%s)
-BAK="${LIVE}.bak.${TS}"
+BAK="${TARGET}.bak.${TS}"
 
 printf '%s\n' '--- agorabus-boot-handshake-install ---'
 printf 'draft:  %s\n' "$DRAFT"
 printf 'live:   %s\n' "$LIVE"
+printf 'target: %s\n' "$TARGET"
 printf 'backup: %s\n' "$BAK"
 printf '\n'
 
-printf '=== diff (live → draft) ===\n'
-diff "$LIVE" "$DRAFT" || true
+printf '=== diff (target → draft) ===\n'
+diff "$TARGET" "$DRAFT" || true
 printf '=== /diff ===\n\n'
 
 if [ "$DRY" -eq 1 ]; then
@@ -75,11 +82,12 @@ if [ "$DRY" -eq 1 ]; then
     exit 0
 fi
 
-cp "$LIVE" "$BAK"
+cp "$TARGET" "$BAK"
 printf 'backup written: %s\n' "$BAK"
 
-install -m755 "$DRAFT" "$LIVE"
-printf 'installed: %s\n' "$LIVE"
+# Write into the real file (preserves the symlink at $LIVE).
+install -m755 "$DRAFT" "$TARGET"
+printf 'installed: %s (via %s)\n' "$TARGET" "$LIVE"
 
 bash -n "$LIVE" && printf 'bash -n: OK\n'
 
