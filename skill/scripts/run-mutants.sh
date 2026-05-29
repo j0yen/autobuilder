@@ -23,6 +23,16 @@
 
 set -uo pipefail
 
+# cargo installs binaries to CARGO_HOME/bin (default ~/.cargo/bin). That dir is
+# on an interactive shell's PATH but NOT necessarily on the autobuilder/build-tick
+# environment's PATH, so a freshly `cargo install`-ed cargo-mutants would be
+# invisible to `command -v`. Prepend the cargo bin dir defensively.
+CARGO_BIN="${CARGO_HOME:-$HOME/.cargo}/bin"
+case ":$PATH:" in
+  *":$CARGO_BIN:"*) : ;;
+  *) [ -d "$CARGO_BIN" ] && PATH="$CARGO_BIN:$PATH" && export PATH ;;
+esac
+
 CRATE_DIR="${1:?usage: run-mutants.sh <crate_dir>}"
 cd "$CRATE_DIR" || { echo "run-mutants: cannot cd to $CRATE_DIR" >&2; exit 1; }
 
@@ -42,6 +52,11 @@ if ! command -v cargo-mutants >/dev/null 2>&1; then
     echo "run-mutants: FAILED to install cargo-mutants; see $LOG" >&2
     exit 1
   fi
+  # The install dir may not have existed (hence not added to PATH above); add now.
+  case ":$PATH:" in
+    *":$CARGO_BIN:"*) : ;;
+    *) [ -d "$CARGO_BIN" ] && PATH="$CARGO_BIN:$PATH" && export PATH ;;
+  esac
 fi
 if ! command -v cargo-mutants >/dev/null 2>&1; then
   echo "run-mutants: cargo-mutants still not on PATH after install" >&2
@@ -63,7 +78,13 @@ if [ "$cache_enabled" = "1" ]; then
   )
 fi
 
-MUTANTS_JSON="$OUTDIR/mutants/outcomes.json"
+# cargo-mutants (>=24) writes its JSON under <--output>/mutants.out/; older
+# layouts dropped it directly under <--output>. We resolve the real path from
+# a candidate list AFTER the run (see "Resolve the outcomes file" below) rather
+# than assuming one location. CACHE_DEST is the fixed path a cache-hit restores
+# the prior outcomes to (and which the resolution list always includes first).
+MUTANTS_JSON=""
+CACHE_DEST="$OUTDIR/mutants/outcomes.json"
 start=$(date +%s)
 used_cache=0
 
@@ -79,16 +100,28 @@ merge_metrics_null() {
 if [ "$cache_enabled" = "1" ] && [ -n "$cache_key" ] && [ -f "$CACHE_DIR/$cache_key.json" ]; then
   echo "run-mutants: cache hit ($cache_key); reusing prior outcomes" | tee -a "$LOG"
   mkdir -p "$OUTDIR/mutants"
-  cp "$CACHE_DIR/$cache_key.json" "$MUTANTS_JSON"
+  cp "$CACHE_DIR/$cache_key.json" "$CACHE_DEST"
   used_cache=1
 else
   # --- 3. Run cargo-mutants ---
   echo "run-mutants: running cargo mutants (cap ${WALL_CAP}s, jobs $(nproc))" | tee -a "$LOG"
   verdict_timeout=0
-  # cargo-mutants exit codes: 0=all caught, 1=missed/timeout survivors, 2=usage,
-  # 3=found no mutants, 4=build broken. We treat 0/1/3 as "ran"; the JSON tells us counts.
+  # cargo-mutants exit codes are version-dependent and DO NOT cleanly separate
+  # "ran but found survivors" from "could not run". Empirically (cargo-mutants
+  # 27.0.0): 0=all mutants caught, 1=baseline/build broken, 2=some mutants
+  # MISSED (survived), 124=our timeout wrapper. Crucially exit 2 — a surviving
+  # mutant — is the NORMAL telemetry case this PRD exists to measure, NOT a
+  # failure. So we do NOT decide success from the exit code. Instead we run,
+  # remember rc only for the timeout case, and below treat "no parseable
+  # outcomes file was produced" (resolved from the candidate list) as the real
+  # infrastructure failure. This is robust across cargo-mutants versions.
+  #
+  # NOTE: cargo-mutants forbids --in-place with --jobs (parallel mutation needs
+  # isolated copied trees; in-place mutates the single source tree serially). We
+  # want the parallelism (PRD asks for --jobs $(nproc)), so we use the default
+  # copy-tree mode (no --in-place) which is cargo-mutants' standard parallel path.
   timeout "${WALL_CAP}s" \
-    cargo mutants --in-place --no-shuffle --jobs "$(nproc)" \
+    cargo mutants --no-shuffle --jobs "$(nproc)" \
       --output "$OUTDIR/mutants" >>"$LOG" 2>&1
   rc=$?
   if [ "$rc" = "124" ]; then
@@ -109,11 +142,28 @@ else
   fi
 fi
 
-# Resolve the outcomes file cargo-mutants produced (older/newer layouts).
-if [ ! -f "$MUTANTS_JSON" ]; then
-  for cand in "$OUTDIR/mutants/mutants.json" "$OUTDIR/mutants/outcomes.json"; do
-    [ -f "$cand" ] && MUTANTS_JSON="$cand" && break
-  done
+# Resolve the outcomes file cargo-mutants produced. Candidate order:
+#   CACHE_DEST                              — populated only on a cache hit
+#   <output>/mutants.out/outcomes.json      — cargo-mutants >=24 layout
+#   <output>/mutants.out/mutants.json       — older >=24 alias
+#   <output>/outcomes.json, <output>/mutants.json — flat/legacy layout
+for cand in \
+    "$CACHE_DEST" \
+    "$OUTDIR/mutants/mutants.out/outcomes.json" \
+    "$OUTDIR/mutants/mutants.out/mutants.json" \
+    "$OUTDIR/mutants/outcomes.json" \
+    "$OUTDIR/mutants/mutants.json"; do
+  [ -f "$cand" ] && MUTANTS_JSON="$cand" && break
+done
+
+# Infrastructure-failure guard (replaces the old, version-fragile exit-code
+# check): cargo-mutants ran to completion only if it produced a parseable
+# outcomes file. If none of the candidates exist, cargo-mutants could not run
+# the mutation set (build broken / crashed / bad usage) — surface as a non-zero
+# infra failure rather than silently scoring 0 caught. rc is shown for context.
+if [ -z "$MUTANTS_JSON" ] || [ ! -f "$MUTANTS_JSON" ]; then
+  echo "run-mutants: cargo-mutants produced no outcomes file (rc=${rc:-?}); treating as infrastructure failure; see $LOG" >&2
+  exit 1
 fi
 
 wall=$(( $(date +%s) - start ))

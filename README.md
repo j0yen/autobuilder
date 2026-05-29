@@ -96,6 +96,12 @@ PRD ──► Stage 1: Intake & 5-Whys ──► intent-card.json
                         └─► Stage 5: Postmortem + Self-Evolve
 ```
 
+Stage 3 also runs `scripts/run-mutants.sh` (cargo-mutants telemetry, Phase 1)
+when the crate has tests: it merges `mutation_kill_rate` and mutant counts into
+`metrics.json` to catch tests that pass but cover only the implementation's
+happy path. It is telemetry-only today (never blocks); a calibrated kill-rate
+gate is a follow-on. See PRD `autobuilder-mutation-testing`.
+
 The **agent edits only `src/`**. Everything else — `Cargo.toml`, `clippy.toml`,
 `deny.toml`, `tests/`, `scripts/run-metrics.sh` — is read-only harness,
 mirroring autoresearch's `prepare.py`/`train.py` separation. The skill ships
