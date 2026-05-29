@@ -10,6 +10,12 @@ build_auto: true
 build_target: mixed
 build_priority: high
 deferred_acs: [1, 2, 5, 8]
+mock_unjustified_for: [1, 2, 5, 8]
+mock_justifications:
+  1: "AC1 brings up the live Fleet 1 systemd-user target in dependency order; a mock would have to reimplement systemd's transaction engine, making the test a different scheduler rather than a verification of this one."
+  2: "AC2 measures cold-reboot to first greeting in <=15 s on real hardware; wall-clock boot timing cannot be simulated without recreating the firmware, kernel, and greetd startup path."
+  5: "AC5 requires real TTS audio to halt within 200 ms and wake handling to suspend; the timing invariant is meaningless without the live audio device and pipewire graph the mock cannot stand in for."
+  8: "AC8 needs five real restart-storm crash cycles to trigger supervisor backoff; a mock crash loop would assert the backoff math we wrote, not that the OS-level process lifecycle behaves under storm."
 
 ---
 
