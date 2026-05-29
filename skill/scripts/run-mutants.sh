@@ -206,11 +206,18 @@ if [ "$used_cache" = "0" ] && [ "$cache_enabled" = "1" ] && [ -n "$cache_key" ] 
 fi
 
 # --- 5. Forensic receipt ---
+# The full outcomes JSON (`detail`) can be hundreds of KB. Passing it via
+# `--argjson detail "$detail"` puts the whole blob in jq's argv, which trips
+# Linux's per-arg cap (MAX_ARG_STRLEN, 128KB) long before the ARG_MAX total —
+# jq then dies with "Argument list too long" and the receipt can't be written.
+# Read it from a file instead via --slurpfile (binds $detail_arr to an array of
+# the file's JSON values; we take [0]). Fall back to a one-element `null` file.
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-if [ -f "$MUTANTS_JSON" ]; then
-  detail=$(jq -c '.' "$MUTANTS_JSON" 2>/dev/null || echo 'null')
+detail_file=$(mktemp "$OUTDIR/.detail.XXXXXX")
+if [ -f "$MUTANTS_JSON" ] && jq -e . "$MUTANTS_JSON" >/dev/null 2>&1; then
+  cp "$MUTANTS_JSON" "$detail_file"
 else
-  detail='null'
+  printf 'null\n' > "$detail_file"
 fi
 tmp_r=$(mktemp "$OUTDIR/.receipt.XXXXXX")
 jq -n \
@@ -221,7 +228,7 @@ jq -n \
   --arg kr "$kill_rate" \
   --argjson wall "$wall" \
   --argjson cached "$used_cache" \
-  --argjson detail "$detail" \
+  --slurpfile detail_arr "$detail_file" \
   '{schema:"autobuilder.mutants-receipt.v1",
     verdict:"complete",
     generated_at:$ts,
@@ -233,8 +240,10 @@ jq -n \
     mutants_timeout_count:$mtimeout,
     mutation_kill_rate:(if $kr=="null" then null else ($kr|tonumber) end),
     mutation_wall_seconds:$wall,
-    detail:$detail}' > "$tmp_r" || { echo "run-mutants: cannot write receipt" >&2; exit 1; }
+    detail:($detail_arr[0])}' > "$tmp_r" \
+  || { rm -f "$detail_file"; echo "run-mutants: cannot write receipt" >&2; exit 1; }
 mv "$tmp_r" "$RECEIPT"
+rm -f "$detail_file"
 
 # --- AC4: merge the four fields into metrics.json; existing fields untouched ---
 if [ -f "$METRICS" ]; then
