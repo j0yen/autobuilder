@@ -8,6 +8,26 @@
   `PRD-wintermute-bootstrap.md` (account credentials)
 build_target: rust-cli
 build_priority: medium
+deferred_acs: [1, 2, 3, 4, 5, 6, 7, 10]
+deferred_ac_reasons:
+  1: "Requires live CalDAV credentials and a running iCloud/Fastmail/Nextcloud server; cannot be simulated without a real account."
+  2: "Requires a primed live CalDAV account with a real event on today's date; no offline substitute."
+  3: "Requires a live CalDAV server with a weekly-recurring event to verify RRULE expansion end-to-end."
+  4: "Requires live CalDAV write access and a verbal-confirm round-trip with the brain/dialog stack."
+  5: "Requires a live CalDAV account with a dentist event in the 30-day lookahead to validate query filtering."
+  6: "Requires live CalDAV delete capability and cross-verification via the web UI."
+  7: "Requires a live CalDAV poll cycle and a real upcoming event to trigger the wm.cal.event.upcoming publish."
+  10: "End-to-end voice round-trip requires jsy's live account, brain, dialog, and microphone — not automatable in CI."
+mock_unjustified_for: [1, 2, 3, 4, 5, 6, 7, 10]
+mock_justifications:
+  1: "A mock CalDAV server (e.g. Baikal) would require a live network binding; minicaldav's HTTP transport cannot be fully mocked without an HTTP server fixture, which is out of scope for a v1 ship gate."
+  2: "Event data is determined by the real calendar state on the day of testing; a static mock ICS cannot replicate the 'event on today's date' semantic reliably."
+  3: "RRULE expansion is unit-tested (expand_weekly_rrule_count) in the offline suite; the missing piece is the live sync cycle, which requires real CalDAV."
+  4: "The verbal-confirm flow runs through wm-dialog and the brain bus; mocking that stack would be a test of the mock, not of wm-cal's CalDAV write path."
+  5: "Query filtering is tested offline via parse_ics_events_basic; the missing piece is live network retrieval of a matching event in a real calendar."
+  6: "Delete verification requires the event to disappear from the live CalDAV server; a mock that always succeeds cannot validate the protocol delete path."
+  7: "The reminder publish timing depends on a live poll cycle triggered by real CalDAV change timestamps; a mock clock does not exercise the real integration."
+  10: "Full end-to-end voice round-trip is a system-level acceptance test that requires the complete wintermute stack running on jsy's live hardware."
 
 ---
 
