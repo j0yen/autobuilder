@@ -3554,3 +3554,84 @@ Open questions for jsy: confidence-floor + local-llm stakes-boundary calibration
   (vision OQ4/OQ5 — local-llm route ships GATED OFF by default); does the brain
   see pre-handled turns for continuity (OQ3 — lean: side-effecting skills write
   recall, pure lookups don't).
+
+## 2026-05-29T07:30  /dream  vision-docket (NEW vision)
+Drafted: PRD-docket-core.md, PRD-docket-escalate.md,
+  PRD-docket-evidence.md, PRD-docket-self-review-bind.md,
+  PRD-docket-digest.md
+Vision: visions/docket.md
+Seed: bare /dream + Phase-1 recall reflective seeds + journal recurrence
+  + self-review SKILL.md. Picked direction myself (no topic given).
+
+**Trigger (live, verified this pass):** the self-review rediscovers the
+same findings every run and parks them as PROSE, with no structured
+identity, count, or lifecycle. Evidence:
+  - `grep -l "Carried forward" ~/brain/journal/*.md` → 6 CONSECUTIVE
+    days (05-24..05-29). "agorabus stale binary" appears 7× in the
+    05-28 journal alone, 3× in 05-29.
+  - `self-review/SKILL.md:359` codifies "playbook justified when a
+    signal recurs across 3+ separate runs" — but recurrence is EYEBALLED
+    across `recall query` prose. Run-18/19 reflective memories
+    (01KSRV7R…, 01KSS21W…) literally say the stale-binary item is
+    "approaching the 3-runs threshold" — the agent is hand-counting.
+  - `~/.claude/skills/self-review/state/` does NOT exist — the skill has
+    no structured state. Carry-forward = one free-text reflective memory
+    per run (SKILL.md:452-465).
+  - "agentns session-zeros" Pending ~21 consecutive runs with no
+    escalation event — proof that without a mechanical rule, escalation
+    never fires.
+
+docket = the missing third staleness axis. vigil watches running
+binaries vs source; freshness watches memory bodies; drift watches skill
+text; docket watches the self-review's OWN findings accumulate, recur,
+escalate, and auto-close.
+
+Order:
+  docket-core → { docket-escalate, docket-evidence } →
+  docket-self-review-bind (needs core+escalate) ; docket-digest (needs
+  core, better with escalate).
+
+**Notes for /build:**
+  - docket-core is a NEW rust-cli → publish j0yen/docket,
+    ~/.local/bin/docket. The other three are rust-extend INTO
+    ~/wintermute/docket (same crate, new subcommands/tables; idempotent
+    migrations). docket-self-review-bind is build_target: mixed — it
+    edits ~/.claude/skills/self-review/SKILL.md (ADDITIVE anchors only,
+    no rewrite) + adds scripts/docket-runid.sh.
+  - Build core FIRST and freeze the report/list contract (run model,
+    stable-key convention) — escalate/evidence/digest all extend the
+    same store. Don't fork the schema.
+  - docket-self-review-bind has the load-bearing AC: replace the
+    hand-maintained "Carried forward" prose (SKILL.md:414) with `docket
+    list --open`, and the line-359 playbook rule with `docket list
+    --escalated`. Verify end-to-end against the real binary (report 4
+    seeded keys across 3 runs → agorabus-stale-binary escalates; a
+    1-run finding auto-resolves on sweep).
+  - SCOPE BOUNDARIES (do not merge): docket is a per-KEY lifecycle state
+    machine (open→escalated→resolved, run-streak counting). recall is
+    similarity-retrieval over prose. docket LINKS to recall ULIDs
+    (`recall:<ulid>` evidence refs) but is NOT a recall extension. Keep
+    them separate tools.
+  - ENVELOPE REUSE (hard): docket-digest's JSON MUST reuse the
+    `wm.health.*` envelope OWNED by companion-degrade and CONSUMED by
+    kin / homestead's readiness-beacon (per the 2026-05-29T06:40
+    homestead note). Match field names exactly against companion-degrade's
+    shipped crate/contract — do NOT invent a parallel schema. A digest
+    test must assert conformance.
+  - NON-DESTRUCTIVE: every self-review→docket call is list/report/sweep.
+    The binding adds ZERO new user-gated blockers. docket-digest
+    documents (does NOT auto-modify) the SessionStart hook snippet —
+    that wiring stays user-gated.
+
+Open questions (vision OQs, user-gated, none block core):
+  - Run identity string format (proposed YYYY-MM-DD.<n>).
+  - Store format SQLite (leaning) vs JSONL-in-git.
+  - Future producers (vigil binstale, readiness-beacon, /build blockers)
+    all reporting to ONE docket — left as a vision boundary note, not a
+    v1 PRD, until the self-review producer proves the contract out.
+
+**Notes for next /dream:** docket deliberately stops at 5 with the
+self-review as the SOLE v1 producer. The multi-producer surface (a
+unified docket fed by vigil + homestead + /build, with cross-tool dedup)
+is real but premature until the single-producer contract ships. Don't
+draft it until docket-self-review-bind is green on this laptop.
