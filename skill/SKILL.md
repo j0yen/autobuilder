@@ -1,6 +1,6 @@
 ---
 name: autobuilder
-description: PRD-driven, rigorously validated Rust code generation. Use when the user wants to build a Rust CLI or library from a Product Requirements Document under an autonomous iterate-and-prove loop with structured receipts and a 25-receipt release gate. Synthesizes autoresearch's locked-harness model, jankurai's anti-pattern catalog, and jeryu's proof-receipt gate into one pipeline.
+description: PRD-driven, rigorously validated Rust code generation. Use when the user wants to build a Rust CLI or library from a Product Requirements Document under an autonomous iterate-and-prove loop with structured receipts and a 7-receipt risk gate. Synthesizes autoresearch's locked-harness model, jankurai's anti-pattern catalog, and jeryu's proof-receipt gate into one pipeline.
 ---
 
 # autobuilder
@@ -250,11 +250,22 @@ embed the parts of these repos it depends on.
 
 ## Status
 
-**v0.1 — Phase A in progress.** Schemas, rules, prompts being scaffolded. The Rust binary (Phase B) and the first meta-PRD run (Phase C) follow.
+**Operational — Phases A–C complete.** The schemas, rules, and prompts are
+in place (Phase A); the companion Rust binary is built and installed at
+`~/.cargo/bin/autobuilder`, exposing all pipeline subcommands —
+`intake / scaffold / loop / metric-harness / adversarial / experiment /
+gate / rollback-plan / reviewer-agent / vti-plan / ci-checks / postmortem /
+evolve` (Phase B); and the metric-harness meta-PRD plus many external PRDs
+have run through the full loop (Phase C). The pipeline is load-bearing in
+the daily `/build` automation, which delegates every Rust-shaped PRD to it;
+EvidencePack receipts and postmortems have accumulated across shipped
+projects. Scope remains `--target cli|lib` (services/WASM/embedded are v2),
+and Stage 6 publish is still a manual convention (see that stage).
 
-## Known block — recall-memory-linter
+## Resolved block — recall-memory-linter (historical)
 
-Reviewer flagged: 1, 7.
-Investigate the underlying cause and either fix the implementation
-or amend the intent-card if the AC was wrong. Re-run the gate before
-shipping.
+An early run had the reviewer-agent return `block` on acceptance criteria
+1 and 7; `evolve` recorded it here as a known anti-pattern. The slice was
+subsequently resolved and shipped to `github.com/j0yen/recall-memory-linter`.
+Retained as a worked example of the reviewer receipt doing its job — not as
+pending work.
