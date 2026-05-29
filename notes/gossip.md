@@ -3197,3 +3197,66 @@ Open questions (in visions/vigil.md):
     itself user-gate-blocked.)
   - rollout-window-guard (precise turn-in-flight guard) deferred to Fleet 2;
     depends on continuity-of-conversation's wm.brain.session.{start,end}.
+
+## 2026-05-29T05:15  /dream  vision-scribe
+Seed: self-review runs 16/17/18 (2026-05-28) hand-count ctrace "missing
+summaries" 1→4→5 every tick and never fix them. Phase 1 caught the root
+cause live: the summarizer is NOT slow (renders 12MB/124k-event log in
+1.7s by hand this session) and claude-stop.err is EMPTY — the SessionEnd
+hook never RAN. Cause = ungraceful exit: headless build/dream/self-review
+sessions get SIGKILLed by cgroup teardown (memory
+self_build_detached_cgroup_teardown), SIGKILL delivers no SessionEnd, so
+ctrace-session-end.sh never renders and the tracer is orphaned. Nothing
+backfills. Measured: 828 *.ndjson vs 810 *.summary.md = 18 holes; the 5
+oldest are the heavy build/kernel sessions (T162617 12MB, T163729 10MB,
+T164732 10MB, T181900, T220013-live).
+
+Drafted:
+- visions/scribe.md
+- PRD-ctrace-scribe.md                 (rust-cli, NEW repo: single-pass renderer + backfill engine)
+- PRD-ctrace-scribe-rollup.md          (rust-extend ctrace-scribe: cross-session daily digest)
+- PRD-ctrace-scribe-selfreview.md      (shell: wire backfill+rollup into self-review B.5)
+- PRD-ctrace-session-end-resilient.md  (shell: SessionStart backfill sweep + hardened hooks)
+- PRD-ctrace-orphan-reap.md            (rust-cli, NEW repo: reconcile orphaned tracer state)
+
+Order:
+  ctrace-scribe
+     ├──► ctrace-scribe-rollup
+     ├──► ctrace-scribe-selfreview      (needs backfill + rollup)
+     └──► ctrace-session-end-resilient  (needs backfill)
+  ctrace-orphan-reap                    (independent; pairs with session-end-resilient)
+
+Notes for /build:
+  - ctrace-scribe is the ROOT — ship it first. rollup/selfreview/resilient
+    all shell out to `scribe`. All three DEGRADE SAFELY if scribe isn't on
+    PATH yet (fall back to summarize-ctrace-session.sh), so they can scaffold
+    ahead and their non-scribe paths are testable today.
+  - ctrace-scribe + rollup are pure read/render of ~/.cache/ctrace/sessions
+    — safe, no live-system mutation. Test against /tmp fixture dirs.
+  - ctrace-session-end-resilient ships its hook changes as *.draft.sh under
+    proposals/ (user-gated swap into ~/.claude/scripts/, same precedent as
+    PRD-agorabus-boot-handshake). DO NOT auto-swap the live SessionStart/End
+    hooks — those touch every session boundary.
+  - ctrace-scribe-selfreview edits the self-review skill's Phase B.5; same
+    shape as PRD-binstale-self-review (vigil). Wrap the backfill write in the
+    existing wchg scope-guard on ~/.cache/ctrace/sessions.
+  - ctrace-orphan-reap is read-by-default, --apply opt-in, --apply --dry-run
+    available. It signals ONLY the recorded tracer PID and only when the
+    owner is dead — never a live-owned tracer.
+
+Relationship to other visions:
+  - COMPLEMENTS session-postmortem (visions/continuity.md), which *consumes*
+    ctrace as one of its four substrates — a hole-free summary record makes
+    that join honest. Not a duplicate; scribe fills the record, postmortem
+    reads it.
+  - orphan-reap RHYMES WITH vigil's running-process staleness axis but is
+    distinct: vigil = stale *binary* on a healthy process; orphan-reap =
+    leaked *tracer* whose owner died. Keep separate.
+
+Open questions (in visions/scribe.md):
+  - Replace summarize-ctrace-session.sh outright, or keep it as scribe's
+    fallback? (leaning: keep as fallback; resilient hook prefers scribe)
+  - ctrace has no source repo (python script + .bt + 2 shell scripts) —
+    scribe is a NEW repo, not an extend. Confirm before wrapping ctrace.
+  - Backfill cadence: SessionStart + self-review (v0.1) vs a dedicated
+    timer (probably overkill at this volume).
