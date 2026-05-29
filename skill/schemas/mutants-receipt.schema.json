@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://j0yen.dev/schemas/autobuilder-mutants-receipt.schema.json",
+  "title": "autobuilder cargo-mutants receipt",
+  "description": "Forensic per-run record emitted by scripts/run-mutants.sh. PRD: autobuilder-mutation-testing (Phase 1 — telemetry).",
+  "type": "object",
+  "required": ["schema", "verdict", "generated_at", "mutation_wall_seconds"],
+  "properties": {
+    "schema": { "const": "autobuilder.mutants-receipt.v1" },
+    "verdict": { "type": "string", "enum": ["complete", "timeout"] },
+    "generated_at": { "type": "string" },
+    "cached": { "type": "boolean" },
+    "mutants_total": { "type": ["integer", "null"], "minimum": 0 },
+    "mutants_killed_count": { "type": ["integer", "null"], "minimum": 0 },
+    "mutants_alive_count": { "type": ["integer", "null"], "minimum": 0 },
+    "mutants_unviable_count": { "type": ["integer", "null"], "minimum": 0 },
+    "mutants_timeout_count": { "type": ["integer", "null"], "minimum": 0 },
+    "mutation_kill_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "mutation_wall_seconds": { "type": "integer", "minimum": 0 },
+    "detail": {
+      "description": "Raw cargo-mutants JSON (object or outcomes array) for per-mutation forensics. null when no outcomes file was produced.",
+      "type": ["object", "array", "null"]
+    },
+    "outcomes": { "type": "array" }
+  },
+  "additionalProperties": false
+}

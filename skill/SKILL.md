@@ -78,6 +78,19 @@ LOOP UNTIL all-MUST-ACs-green AND risk-gate-passes OR budget-exhausted:
   2. Edit src/ ONLY (edit-agent generates the diff)
   3. git commit -m "iter-<n>: <hypothesis>"
   4. scripts/run-metrics.sh > target/autobuilder/run.log 2>&1
+     4b. If the crate has tests, invoke
+         `~/.claude/skills/autobuilder/scripts/run-mutants.sh <crate_dir>`
+         (PRD autobuilder-mutation-testing, Phase 1 — telemetry only). It
+         runs cargo-mutants (installing it once if absent), merges
+         `mutants_total / mutants_killed_count / mutants_alive_count /
+         mutation_kill_rate / mutation_wall_seconds` into metrics.json, and
+         writes `target/autobuilder/mutants-receipt.json`. Phase 1 is NOT a
+         hard gate: a low kill_rate is logged, never blocks (the script
+         exits 0 unless cargo-mutants infrastructure fails). Cached by
+         sha256(src/+tests/+Cargo.toml); slow, so safe to skip on rapid
+         inner iterations and run before the Stage 4 gate. Phase 2 (a
+         calibrated `mutation_kill_rate < THRESHOLD` hard gate) is a
+         follow-on PRD after 20 crates ship mutation data.
   5. Parse target/autobuilder/metrics.json
   6. If crash: tail -n 50 run.log; ≤3 fix attempts; else FailureCapsule + status=crash
   7. Append to results.tsv: <sha> <quality_score> <ac_passing> <status> <description>
@@ -105,12 +118,20 @@ Hard gates (all must pass to advance):
 Quality score (drives advance/revert tiebreak):
 ```
 score = 10*ac_passing_count
+      +  5*mutation_kill_rate          # 0..1; PRD autobuilder-mutation-testing
       +  3*test_coverage_pct
       +  2*proptest_density
       +  1*doc_coverage_pct
       -  2*audit_findings_count
       -  1*clippy_warning_count
 ```
+
+`mutation_kill_rate` (0..1) comes from `scripts/run-mutants.sh` (step 4b);
+weighted high because mutation testing *proves* a test would fail if the
+impl broke, a stronger signal than the `proptest_density` heuristic. When
+mutation data is absent (`null` — script skipped or not yet run), treat the
+term as 0 so the score stays defined. Phase 1 weights it; Phase 2 will gate
+on it (per PRD autobuilder-mutation-testing).
 
 ### Stage 4 — Risk Gate (7 receipts)
 
@@ -229,12 +250,14 @@ rather than rolling equivalents:
 │   ├── evidence-pack.schema.json
 │   ├── failure-capsule.schema.json
 │   ├── proof-receipt.schema.json
+│   ├── mutants-receipt.schema.json
 │   └── merge-witness.schema.json
 ├── scripts/
 │   ├── intake.sh
 │   ├── scaffold.sh
 │   ├── experiment-loop.sh
 │   ├── metric-harness.sh
+│   ├── run-mutants.sh
 │   ├── risk-gate.sh
 │   ├── postmortem.sh
 │   └── evolve.sh
