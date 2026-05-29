@@ -3094,3 +3094,52 @@ Open questions (left in visions/companion.md):
   - Multi-turn memory — wmd is stateless across turns. Future vision
     *continuity-of-conversation*.
 
+
+## 2026-05-28T21:06  /dream  vision-continuity-of-conversation
+Seed: companion vision OQ#5 ("wmd is stateless across turns ... deferred to
+a future vision: continuity-of-conversation") + dialog-turn-fsm non-goal #1.
+Grounded in code: wintermute-brain's handle_turn_user builds the request from
+one transcript (daemon.rs:1057), test pins req.messages.len()==1 (daemon.rs:1585);
+recall_client.rs defers the write/embed path ("lands when the brain starts
+writing memories back, a separate iter"); lib.rs:45-47 defines an unused
+thread-subject convention (THREAD_SUBJECT_PREFIX / thread_subject_for).
+
+Drafted:
+- visions/continuity-of-conversation.md
+- PRD-wmd-turn-history.md       (foundation: bounded Vec<Message> into the request)
+- PRD-wmd-session-boundary.md   (ts-gap + explicit-close session edges; wm.brain.session.{start,end})
+- PRD-wmd-repair-affordances.md ("say that again / louder" via in-session replay, no LLM round-trip)
+- PRD-wmd-memory-writeback.md   (session.end -> extract facts -> recall write/embed, as proposals)
+- PRD-wmd-session-recap.md      (session.start -> recall last thread -> continuity context/opener)
+
+Order:
+  wmd-turn-history
+     ├──► wmd-repair-affordances   (needs only the in-session buffer)
+     └──► wmd-session-boundary
+              └──► wmd-memory-writeback
+                       └──► wmd-session-recap
+
+Notes for /build:
+  - ALL FIVE are rust-extend into ~/wintermute/wintermute-brain and ALL touch
+    daemon.rs/handle_turn_user. They SERIALIZE — do not dispatch two in
+    parallel autobuilder agents; they will collide. Build in dependency order.
+  - wmd-turn-history rewrites the daemon.rs:1585 single-message assertion to the
+    new multi-turn invariant (messages.len()==2*history.len()+1). Rewrite, don't
+    delete — the PRD specifies the replacement invariant + AC1 covers it.
+  - wmd-memory-writeback is the first wmd->recall WRITE; recall_client.rs only has
+    ping/query/touch today. The PRD adds the write/embed client method mirroring
+    recall's length-prefixed framing (MAX_FRAME_BYTES=4MiB). Writes go as recall
+    *proposals* by default (writeback_auto_commit=false) so triage reviews them.
+  - writeback + recap both route through lib.rs thread_subject_for() — neither
+    should invent a new recall subject.
+  - No new deps expected (extraction reuses the Anthropic client with a distinct
+    prompt; writeback_model default Haiku). Same shape as the companion fleet.
+
+Open questions (in visions/continuity-of-conversation.md):
+  - Session-id provenance: brain-side ts-gap inference (v0.1) vs a wm-dialog-minted
+    session id stamped on wm.dialog.turn.user (sibling dialog PRD). Defer.
+  - Privacy of writeback: a companion writing mother's words into a searchable
+    store is a real surface. Proposals-by-default is the v0.1 mitigation; full
+    consent/boundaries is sibling vision *family-boundaries*.
+  - recap_opener default-off: an unprompted continuity greeting is a
+    personality/deployment call (companion.md OQ#4).
