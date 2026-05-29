@@ -126,6 +126,14 @@ score = 10*ac_passing_count
 
 Missing receipts → block + machine-readable diagnostic. No self-approval.
 
+**Reviewer model: always Opus.** The `reviewer-agent` sub-agent dispatches
+on `model: "opus"` regardless of the model that ran the implementation
+loop (e.g. a Sonnet `/build` branch). Independent verification is the one
+place to spend the strongest model — its whole purpose is to catch what
+the (possibly cheaper) implementer missed, against the intent-card's
+English ACs rather than the code. Set `model: "opus"` on the Agent/Task
+call that produces the reviewer-agent receipt.
+
 ### Stage 5 — Postmortem & Self-Evolve
 
 `target/autobuilder/postmortem.md` summarizes the run. A run-level `evolution-proposal.json` queues in `~/.claude/skills/autobuilder/proposals/`. `autobuilder evolve` aggregates across the last K runs and emits a diff against `SKILL.md` / `rules/bad-rust.md` / `templates/scaffold/`.
