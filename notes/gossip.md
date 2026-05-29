@@ -3453,3 +3453,66 @@ failure-mode catalog in §3 of the report shrinks. After 3/5 ship,
 re-run the survey and look for the NEXT slip-through pattern (the
 report deliberately stopped at 5 to ship leverage rather than over-
 catalog).
+
+---
+
+## 2026-05-29T06:40  /dream  vision-homestead (NEW vision)
+Drafted: PRD-wintermute-fleet-install-doctor.md,
+  PRD-wintermute-install-path-convention.md,
+  PRD-wintermute-unit-recovery-watchdog.md,
+  PRD-wintermute-readiness-beacon.md
+Vision: visions/homestead.md
+Seed: bare /dream + Phase-1 live inspection. Picked direction myself
+  (user declined the direction question).
+
+**Trigger (live, verified this pass):** `wmd-init.service` is
+`failed (Result: start-limit-hit)`, `status=203/EXEC` — `ExecStart=
+/usr/local/bin/wmd-init` does not exist; the binary is at
+`~/.local/bin/wmd-init`. Three install conventions across six fleet
+units (`~/.cargo/bin` wm-audio, `~/.local/bin` the rest, `/usr/local/bin`
+wmd-init). 5/6 resolve by luck; the outlier is dead and stays dead
+(no human to reset-failed on mother's device). Also confirmed
+`WM_ANTHROPIC_API_KEY=` is EMPTY — wm-brain runs but can't reason,
+with no deploy-time gate. This is the homeless "companion-reliability
+surface" the vision-kin gossip aside (2026-05-29T06:10) explicitly
+punted: "flag for the companion-reliability surface / next self-review
+— not in kin's scope." homestead is that surface's home.
+
+Order: fleet-install-doctor → { install-path-convention (uses doctor as
+  its install gate), readiness-beacon (consumes doctor's per-unit
+  verdict) }; unit-recovery-watchdog is independent and can ship in a
+  parallel agent.
+
+**Notes for /build:**
+  - All four are rust-extend into ~/wintermute/wintermute-platform
+    (which already ships the `wmd-init` and `wm` binaries — doctor/ready
+    add subcommands to `wm`; watchdog adds a new `[[bin]]`). Same
+    rust-extend shape as the companion fleet.
+  - Build doctor FIRST and expose its unit-resolution as a shared lib
+    function — both install-path-convention (post-install gate) and
+    readiness-beacon (units check) consume it. Don't fork the logic.
+  - install-path-convention has the load-bearing real-world AC: take
+    `wmd-init.service` from failed → active on this laptop (reconcile
+    path → reset-failed → start → is-active=active). That's AC4 and it's
+    the whole point — verify it live.
+  - SCOPE BOUNDARIES (do not merge): companion-boot = power-button→boot
+    phrase (reboot-scoped recovery). companion-degrade = mid-conversation
+    failure voice (phrase bank in wm-brain). vigil/binstale = STALE/
+    deleted running binary vs HEAD. homestead = ABSENT ExecStart path +
+    runtime failed-unit recovery + standing readiness verdict. The
+    `wm.health.*` envelope is OWNED by companion-degrade's design and
+    CONSUMED by vision-kin's health digest — readiness-beacon must
+    REUSE it (AC5), not invent a parallel one. The boot phrase is shared
+    with companion-boot — suggest boot owns the "ready" phrase, beacon
+    owns the "not-ready" reasons (beacon OQ).
+  - Two user-decisions gate full ship (vision OQs): which path
+    convention wins (~/.local/bin default), and watchdog scope
+    (user vs system). Neither blocks doctor or beacon.
+
+**Notes for next /dream:** homestead deliberately stops at 4. A 5th
+component — unifying vigil's stale-detector and homestead's absent-path
+detector under one `wm doctor` surface — is real but premature until
+both ship; left as a vision boundary note, not a PRD. If the user sets
+the API key and deploys to real hardware, the next undreamed surface is
+*remote operability* (how does jsy push a fix to a device he can't SSH
+into?) — not dreamed here because no remote device exists yet.
