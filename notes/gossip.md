@@ -3328,3 +3328,79 @@ Open questions (in visions/signet.md):
     per the SIGKILL-skips-hook problem scribe is fixing). Leaning pull-based.
   - Receipt location ~/.cache/agentns/receipts/<sid>.json mirrors ctrace's
     layout for a sibling-glob join — confirm before wiring.
+
+## 2026-05-29T06:10  /dream  vision-kin
+Seed: companion vision OQ#6 (un-dreamed until now) — "does jsy get
+notifications when mother summons wintermute? Does mother have a way to call
+jsy through it? Sibling vision." Rooted in the original companion seed
+("for this to work with my mother…"). User invoked /dream bare, declined to
+pick among four offered directions → took the most human un-dreamed one.
+
+Grounded in live Phase 1: bus topics that exist are wm.audio.* / wm.tts.* /
+wm.stt.final / wm.brain.reply / wm.browser.{cmd,reply} — NO wm.family.* or
+wm.presence.* anywhere (net-new, honestly). wm.browser.cmd→reply
+(wintermute-browser/src/protocol.rs:73,85) is the request/reply precedent
+reused for wm.family.message→reply. NO outbound transport in any daemon
+(grep twilio|ntfy|gotify|webhook|sms = 0) → wm-reach is the new boundary.
+bootstrap/install.sh is 217 lines with no caregiver wizard → companion's
+"mDNS caregiver-setup flow already assumes a headless device" was
+aspirational; family-enroll builds it for real.
+
+Drafted:
+- visions/kin.md
+- PRD-wintermute-family-intents.md   (rust-extend wintermute-dialog: Family FSM branch, defines wm.family.* contract)
+- PRD-wintermute-family-distress.md  (rust-extend wintermute-dialog: deterministic distress fast-path, non-API)
+- PRD-wintermute-reach.md            (rust-cli, NEW j0yen/wintermute-reach: off-device transport to jsy)
+- PRD-wintermute-presence.md         (rust-cli, NEW j0yen/wintermute-presence: opt-in interaction heartbeat)
+- PRD-wintermute-reach-digest.md     (rust-extend wintermute-reach: daily calm digest, joins presence+reach)
+- PRD-wintermute-family-enroll.md    (rust-cli, NEW j0yen/wintermute-family-enroll: caregiver setup wizard, capstone)
+
+Order:
+  family-intents (defines wm.family.* topics)
+     ├──► family-distress     (safety fast-path; extends dialog)
+     ├──► wintermute-reach    (transport; consumes wm.family.*)
+     │        └──► reach-digest
+     └──► wintermute-presence (emits wm.presence.*)
+              └──► reach-digest
+  family-enroll (config capstone; consumed by all)
+
+Notes for /build:
+  - family-intents is the GATE — ship first. It defines the wm.family.* topic
+    constants the whole fleet keys on. Other repos declare matching string
+    constants (agorabus topics are plain strings; no shared crate needed —
+    keep them identical to kin.md's topic table).
+  - family-distress MUST stay off the Claude API path (deterministic phrase
+    match) — same reasoning companion-degrade used; a distress path gated on
+    the brain fails exactly when it matters. Its spoken assurance reuses
+    wintermute-brain/src/degrade.rs's phrase mechanism — don't invent a 2nd
+    TTS path.
+  - family-distress and wintermute-reach can build in PARALLEL once intents
+    lands (trigger + delivery). reach closes the FamilyPending→ack loop that
+    family-intents opens, so until reach ships every family message times out
+    into "I couldn't reach Joe" (expected, not a bug).
+  - presence is independent of reach (only emits); reach-digest joins them
+    and is the last of the runtime pair.
+  - Privacy defaults are LOAD-BEARING (vision OQ#2): presence/silence/digest
+    default OFF, distress defaults ON. Don't ship a device that phones home
+    about Mom unless family-enroll wrote the opt-in. presence reads only THAT
+    a turn happened + transcript LENGTH, never the text.
+  - Two new daemons (wintermute-reach, wintermute-presence) follow the shipped
+    wm-* shape (subscribe loop + self-emitted-topic filter + heartbeat) and
+    must fix the cargo-bin-vs-local-bin install drift at the unit level — the
+    regression that bit four companion PRDs.
+  - SIBLING of continuity-of-conversation: "tell Joe what I said earlier"
+    needs turn memory = continuity's job. kin assumes single-turn intents for
+    v1; multi-turn family messages wait on continuity shipping.
+
+Open questions (in visions/kin.md):
+  - Transport jsy actually wants on his phone (email/ntfy/gotify/SMS)? wm-reach
+    wires email first, gates the rest behind Cargo features. NEEDS jsy.
+  - Privacy/consent: does mother hear, in wintermute's voice, what's shared?
+    (family-enroll has a `wm-family announce` for exactly this.) NEEDS jsy.
+  - Hard-vs-soft distress line (immediate fire vs "Should I let Joe know?").
+  - Inbound reply channel (email-poll vs webhook) — wm-reach v1 is send-only
+    with a `wm-reach reply` CLI stub; v2 makes inbound real.
+
+Aside (not a kin item): wmd-init.service is FAILED (status=203/EXEC,
+start-limit-hit, 8h) and wm-kernel-pkgrel6-*.service FAILED. Flagging for the
+companion-reliability surface / next self-review — not in kin's scope.
