@@ -3659,3 +3659,53 @@ Notes for /build:
   - Reuse the existing LlmClient fake-injection test pattern for AC2/AC3/AC5.
 Order now: prompt-cache (independent) ; wm-local-llm -> brain-backend-ladder ;
   wm-router -> {wm-skills, wm-semcache, wm-local-llm-as-router-tier}.
+
+## 2026-05-29T07:30  /dream  vision-hearth  (+3 PRDs, new vision)
+Drafted: PRD-hearth-persona-config.md, PRD-hearth-first-contact-greeting.md,
+  PRD-hearth-dialog-degrade-warmth.md
+Vision: visions/hearth.md
+Seed: no user topic given this invocation; chose the strongest *uncovered*
+  evidence after confirming the freshness/identity/recovery space is saturated
+  (vigil/signet/onramp/homestead/docket all cover tonight's infra anomalies —
+  agentns all-zeros, agorabus stale binary, ctrace flakes — so piling on there
+  would violate "don't dream past the research"). hearth fills companion.md's
+  own deferred OQ#4 ("what does she hear the first time?") + dialog-turn-fsm
+  Non-goal #2 ("personality model … blunt for v0.1").
+
+What's the gap (all confirmed by reading source in Phase 1):
+  - Persona is a compile-time const: wintermute-brain/src/daemon.rs:47
+    DEFAULT_PERSONA. Not in brain.toml (which already has user_name/timezone/
+    recap_opener). -> persona-config lifts it to a [persona] table.
+  - recap_opener flag exists (lib.rs:100) but NO greeting content defined, and
+    no first-ever-boot welcome. -> first-contact-greeting.
+  - wm-dialog degrade.rs:44-45 returns IDENTICAL "Sorry, I didn't catch that."
+    for SttUncertain AND TranscribeTimeout, no variation. -> dialog-degrade-warmth.
+
+SCOPE BOUNDARY (do not merge): hearth is the VOICE (persona/greeting/warm
+  phrasing); companion-degrade (*say-so*) is the PLUMBING (operational fault
+  bank in wm-brain keyed by component error kind, owns wm.health.*). They share
+  the wm-tts path but are different concerns. The dialog degrade.rs module
+  comment forward-references companion-degrade for "mood-aware phrasing" — that
+  reference is MIS-AIMED: companion-degrade builds in wm-brain and never touches
+  the wm-dialog FSM bank. hearth-dialog-degrade-warmth is the real owner of that
+  file. No PRD touched it before (grep-confirmed).
+
+Order: persona-config -> first-contact-greeting (both -> wintermute-brain) ;
+  dialog-degrade-warmth (-> wintermute-dialog, independent, ship anytime).
+
+Notes for /build (IMPORTANT — brain serialization):
+  persona-config + first-contact-greeting both extend wintermute-brain's
+  compose_persona / BrainConfig surface, as do the IN-FLIGHT brain-prompt-cache
+  and brain-backend-ladder PRDs. FOUR PRDs touch the same system-prompt
+  composition + config struct. Serialize them or expect rebases. Suggested
+  order if brain-prompt-cache lands first: prompt-cache -> persona-config
+  (persona is the cached prefix; AC5 asserts prefix byte-stability) ->
+  first-contact-greeting. brain-backend-ladder is orthogonal (dispatch tier),
+  can interleave but watch BrainConfig merges.
+  dialog-degrade-warmth has NO brain dependency — dispatch it freely.
+
+Open questions (vision OQs, none block v1):
+  - Learned persona (recall wintermute-profile subject) vs configured — deferred
+    until persona-config proves the data shape.
+  - One register across two repos (brain.toml vs wm-dialog phrases) can drift;
+    consistency check deferred until both are config-sourced.
