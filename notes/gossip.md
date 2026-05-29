@@ -3732,3 +3732,63 @@ Notes for /build:
     -> brain-backend-ladder.
   - wm-verify is pure/in-process (no network, no model). Conservative toward
     Reject but AC6 forbids false-rejecting normal answers (would nuke local-first).
+
+## 2026-05-29T08:34Z  /dream  vision-earshot  (manual /dream, no topic)
+Drafted: PRD-earshot-dialog-timing.md, PRD-earshot-vad-patience.md,
+  PRD-earshot-tts-legibility.md, PRD-earshot-gentle-reprompt.md
+Vision: visions/earshot.md
+Seed: companion.md's "a non-technical elder, jsy's mother" + hearth's own
+  scope note. hearth made the WORDS warm; earshot makes sure she can HEAR
+  them and isn't RUSHED. New domain, grep-confirmed unclaimed by any PRD.
+
+What's the gap (all confirmed by reading source in Phase 1):
+  - Conversation tempo is compile-time: wintermute-dialog/src/fsm.rs
+    CONFIRM_TIMEOUT_MS=30_000 (fsm.rs:28), MAX_REPROMPTS=1 (fsm.rs:31),
+    family re-exported lib.rs:34-35. Not in a config table. An elder who
+    pauses gets cut off. -> earshot-dialog-timing (const->[timing], same
+    move hearth-persona-config made for the persona string).
+  - One reprompt then silent exit: Confirming->ConfirmTimeout->
+    DenyReason::Silence->Idle (fsm.rs:236-252); reprompt path exists
+    (fsm.rs:402-415) but capped at 1. -> earshot-gentle-reprompt (patient
+    sequence + warm SPOKEN close).
+  - TTS has no rate/volume: PiperSubprocess::render passes only --model +
+    --output_file (synth.rs:101-105), no --length_scale, no gain anywhere.
+    -> earshot-tts-legibility (slower + louder for hearing loss).
+  - VAD silence-hangover (speech.end "after confirmed silence",
+    events.rs:27) tuned for normal speech, not configurable. ->
+    earshot-vad-patience (longer default so a mid-sentence pause != end).
+
+SCOPE BOUNDARY (do not merge): earshot-gentle-reprompt owns the SILENCE /
+  no-response path in fsm.rs ("I'm still waiting for you"). hearth-dialog-
+  degrade-warmth owns degrade.rs, the FAULT bank ("I didn't catch that").
+  Different module, different trigger, shared wm-tts path. earshot must
+  NOT touch degrade.rs; hearth must NOT touch the fsm silence branch.
+
+Order: earshot-dialog-timing (foundation, introduces [timing]) ->
+  {earshot-vad-patience (wm-audio, independent), earshot-tts-legibility
+  (wm-tts, independent)} parallel -> earshot-gentle-reprompt (wm-dialog,
+  reads dialog-timing's max_reprompts + cadence).
+
+Notes for /build:
+  - earshot-dialog-timing + earshot-gentle-reprompt BOTH edit fsm.rs in
+    wintermute-dialog — serialize them (timing first, verified, then
+    reprompt). Do NOT dispatch concurrently.
+  - hearth-dialog-degrade-warmth is in-flight on the same crate. No logic
+    overlap (degrade.rs vs fsm.rs) but lib.rs re-export / Cargo churn may
+    force a rebase on the earshot dialog PRDs. Watch it.
+  - vad-patience (wm-audio) + tts-legibility (wm-tts) are fully
+    independent of the dialog PRDs and of each other — parallel agents OK.
+  - Tests pin the old const timing values (e.g. fsm.rs:642
+    StartConfirmTimer{ms}==CONFIRM_TIMEOUT_MS). REWRITE to the config-
+    sourced invariant, don't delete (continuity-of-conversation discipline
+    for req.messages.len()).
+  - Defaults are elder-friendly (more patient, slower, louder) but tunable;
+    setting knobs to neutral/old values must reproduce today's behavior.
+
+Open questions (vision OQs, none block v1):
+  - Learned pace (widen silence window from observed cut-offs) vs static
+    config defaults — deferred to a later vision.
+  - Higher TTS gain feeds the AEC loop (companion's audio-aec must still
+    cancel) — deployment smoke test, not a unit AC.
+  - Three config tables (dialog [timing] / audio [vad] / tts [voice]) vs
+    one caregiver-facing file — unification is a homestead/onramp concern.
