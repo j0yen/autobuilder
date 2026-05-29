@@ -3260,3 +3260,71 @@ Open questions (in visions/scribe.md):
     scribe is a NEW repo, not an extend. Confirm before wrapping ctrace.
   - Backfill cadence: SessionStart + self-review (v0.1) vs a dedicated
     timer (probably overkill at this volume).
+
+## 2026-05-29T06:05  /dream  vision-signet
+Seed: ~20 consecutive self-review runs flag agentns `/proc/self/agent_session`
+all-zeros as "the lone broken kernel asset." Phase 1 probed it live and the
+diagnosis is WRONG: kernel is healthy (CONFIG_AGENT_NS=y, /proc/self/ns/agent
+resolves -> inode 4026531996 = init-ns range, agent_counters is valid JSON).
+All-zeros is the CORRECT reading of a process in the INIT agent namespace —
+nothing called unshare(CLONE_NEWAGENT) on the launch path. The kernel isn't
+broken; nothing READS the signet correctly. The self-review check
+(SKILL.md:123-124) only knows two states ("present" / "empty|missing ->
+registration failed") with no branch for present-but-all-zeros = init,
+unwrapped, EXPECTED.
+
+Grounded in: live /proc probe this session [kernel-truth]; recall reflective
+01KSS21WFN... "agentns all-zeros ~20th run"; SKILL.md:123-124 verbatim; only
+agentns-claude (of 8 ~/.local/bin tools) touches the surface and only WRITES
+the sid — nothing reads agent_counters; procstat covers cgroup not agentns;
+PRD-claude-agentns-wrap.md §Out-of-scope explicitly deferred "a claude-doctor
+CLI to check namespace status from outside" — signet builds exactly that.
+
+Drafted:
+- visions/signet.md
+- PRD-agentns-doctor.md             (rust-cli, NEW repo j0yen/agentns-doctor: tri-state status/explain/counters)
+- PRD-agentns-doctor-self-review.md (shell: rewrite B.5 agentns block, kill the 20-run misdiagnosis)
+- PRD-agentns-session-receipt.md    (rust-extend agentns-doctor: per-session counter ledger, ctrace-joinable)
+
+Order:
+  agentns-doctor
+     ├──► agentns-doctor-self-review   (shells out to doctor; degrades w/o it)
+     └──► agentns-session-receipt      (rust-extend of doctor)
+
+Notes for /build:
+  - agentns-doctor is the ROOT — ship first. It's READ-ONLY (/proc only; never
+    writes /proc/*/agent_*, never unshares, never signals). Safe to build+install.
+  - Classify by VALUE (session==all-zeros AND file present => init), NOT by a
+    hardcoded init-ns inode — the inode differs across observations (4026531996
+    this session vs 4026531837 on 2026-05-27); treat inode as advisory only.
+  - --proc-root <dir> test hook makes absent/live/malformed FIXTURE-testable
+    TODAY without a wrapped session. Most ACs are today-testable; only the
+    *live* (non-zero) half of a few ACs is wrap-gated -> declare deferred_acs.
+  - agentns-doctor-self-review ships as proposals/*.draft.md, NOT a live
+    SKILL.md edit (skill self-mod is classifier-gated; same precedent as
+    agorabus-boot-handshake + ctrace-session-end-resilient drafts). It DEGRADES
+    safely if the doctor isn't installed (fallback cat with corrected text), so
+    it can land in either order vs PRD-agentns-doctor.
+  - session-receipt is meaningful only for a WRAPPED session (counters are zero
+    in init ns). --require-wrapped exits non-zero in init state so automated
+    callers don't litter zeros-receipts. Honest about the precondition.
+
+Relationship to other visions:
+  - SIBLING of onramp: onramp's claude-agentns-wrap builds the WRAPPER (makes
+    the sid non-zero); signet builds the READING of it (whether zero or not).
+    Neither blocks the other — the doctor is useful NOW precisely because it
+    explains why today's sessions read zero. onramp Fleet 2's onramp-doctor
+    bullet ("runs all three checks") should SHELL OUT to agentns-doctor for the
+    agentns third, not re-implement it.
+  - COMPLEMENTS scribe + session-postmortem: ctrace counts a session from
+    OUTSIDE (eBPF), agentns counts from INSIDE (kernel per-ns hooks);
+    receipt --join-ctrace makes the two joinable on agent_session_id. Not a
+    duplicate.
+
+Open questions (in visions/signet.md):
+  - Init-ns inode stability across boots (classify by value, not inode).
+  - Receipt emission trigger: pull-based (self-review calls receipt --emit
+    --require-wrapped) vs push-on-SessionEnd (unreliable for headless sessions
+    per the SIGKILL-skips-hook problem scribe is fixing). Leaning pull-based.
+  - Receipt location ~/.cache/agentns/receipts/<sid>.json mirrors ctrace's
+    layout for a sibling-glob join — confirm before wiring.
