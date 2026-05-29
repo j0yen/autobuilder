@@ -191,11 +191,11 @@ spawn_worker() {
 
 worker_start_ms=$(epoch_ms)
 if [ -x "$worker" ]; then
-    if pgrep -f "agorabus-worker.sh $sid\$" >/dev/null 2>&1 \
+    if pgrep -f "agorabus-worker.sh $sid " >/dev/null 2>&1 \
        && peer_present "$sid_worker"; then
         hslog_append worker_attach 0 ok 0 already_attached
     else
-        if ! pgrep -f "agorabus-worker.sh $sid\$" >/dev/null 2>&1; then
+        if ! pgrep -f "agorabus-worker.sh $sid " >/dev/null 2>&1; then
             spawn_worker
         fi
         worker_ok=0
