@@ -3043,3 +3043,54 @@ Notes for next /dream:
     (provq was first). Threshold for Fleet 2 stays at 3/5.
   - If chord-claim iter-2 publishes, chord-vision claim-primitive
     bullet is satisfied (agorabus v0.2.0).
+
+## 2026-05-28T19:30  /dream  vision-companion
+Seed: jsy said "for this to work with my mother, voice will need to be the
+primary mode of interaction. you will need to always be listening, ready
+to respond" (2026-05-28T19:18 PT). This is the deployment target.
+
+Drafted:
+- visions/companion.md
+- PRD-wintermute-audio-inference.md (microWakeWord + Silero VAD)
+- PRD-wintermute-stt-whisper-model.md (whisper.cpp + distil-small.en)
+- PRD-wintermute-audio-aec.md (PipeWire module-echo-cancel)
+- PRD-wintermute-dialog-turn-fsm.md (Listen→Wake→Capture→Transcribe→Think→Speak)
+- PRD-wintermute-companion-boot.md (kiosk install, boot-on-power, no keyboard)
+- PRD-wintermute-companion-degrade.md (phrase bank + wm.health.* envelopes)
+
+Order:
+  PRD-agorabus-multi-prefix-subscribe (already queued, blocks barge-in)
+    ↓
+  wintermute-audio-inference  ──  wintermute-audio-aec  (parallel)
+    ↓
+  wintermute-stt-whisper-model
+    ↓
+  wintermute-dialog-turn-fsm  ──  wintermute-companion-degrade  (parallel)
+    ↓
+  wintermute-companion-boot  (deployment capstone)
+
+Notes for /build:
+  - Each PRD is rust-extend, single-target, same shape as today's
+    bus-startup-defect / heartbeat-keepalive / pipewire-output / pipewire-input
+    series that all shipped via parallel autobuilder agents this afternoon.
+  - The install-path drift (cargo install → ~/.cargo/bin; systemd →
+    ~/.local/bin) is being explicitly fixed in companion-boot at the
+    systemd unit level (/usr/local/bin/ system-wide). Sibling PRDs
+    should not assume the drift is permanent; companion-boot lands it.
+  - Inference (PRD-wintermute-audio-inference) and aec (PRD-wintermute-
+    audio-aec) can run in parallel agents. Everything else is gated.
+  - Don't dispatch dialog-turn-fsm before stt-whisper-model is
+    verified-completed — the FSM needs real stt.final events to test.
+  - companion-degrade's AC10 requires stopping wm-stt to simulate
+    "ears gone" — coordinate with whatever other PRD work touches stt.
+
+Open questions (left in visions/companion.md):
+  - Wake word: "hey wintermute" (two syllable, higher false-positive) vs
+    "okay nabu" (stock microWakeWord model, well-trained). Defer to deploy.
+  - Local vs cloud STT — defer; PRD-wintermute-stt-whisper-model goes local.
+  - Form factor — laptop, RPi Zero, RPi 5, mini-PC. Build PRDs target laptop.
+  - First greeting — "Wintermute is ready" is utilitarian. Personality is
+    sibling vision.
+  - Multi-turn memory — wmd is stateless across turns. Future vision
+    *continuity-of-conversation*.
+
