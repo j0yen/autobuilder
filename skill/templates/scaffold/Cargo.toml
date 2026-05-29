@@ -52,6 +52,16 @@ codegen-units = 1
 strip = "debuginfo"
 panic = "abort"
 
+[features]
+# Hardware-reality feature gate. Off by default so `cargo test` stays green on
+# hosts without real hardware. When enabled, `#[ignore]`-gated stubs in
+# `tests/hardware_acs.rs` become runnable under the WM_<SLUG>_HARDWARE_SMOKE=1
+# witness protocol (see autobuilder SKILL.md "Hardware mock convention").
+# A `hardware-drift.json` sweep comparing mock vs. real outcomes is a follow-on
+# PRD; this flag is the scaffolding stub referenced by AC10 of
+# PRD-autobuilder-hardware-mock-convention.
+real-hardware = []
+
 [dependencies]
 
 [dev-dependencies]
