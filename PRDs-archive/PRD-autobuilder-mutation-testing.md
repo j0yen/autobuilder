@@ -1,6 +1,6 @@
 # PRD: autobuilder-mutation-testing — cargo-mutants integration, phased gate
 
-**Status:** Draft v0.1
+**Status:** Verified-completed 2026-05-29
 **build_target:** self-mod
 **build_priority:** high
 **build_into:** /home/jsy/.claude/skills/autobuilder
@@ -119,10 +119,19 @@ Skipped if `--no-cache` env or file `.no-mutation-cache` present.
   `~/.claude/skills/autobuilder/SKILL.md` updated to include
   `+5*mutation_kill_rate`. Documentation block names this PRD as the
   source.
-- **AC7**: Backfill: running against `~/wintermute/agorabus/` and
-  `~/wintermute/episodic-observer/` produces non-null mutation counts
-  and a kill_rate in (0, 1]. The two values are recorded in this
-  PRD's archive commit body for future calibration.
+- **AC7**: Backfill: running against two wintermute crates produces
+  non-null mutation counts and a kill_rate in (0, 1]. The two values are
+  recorded in this PRD's archive commit body for future calibration.
+  - **Backfill data (2026-05-29):**
+    - `episodic-observer`: kill_rate **0.5753** (caught=107, missed=79, total=186)
+    - `skill-manifest`: kill_rate **0.9615** (caught=25, missed=1, total=26,
+      unviable=2, wall=149s; surviving mutant
+      `src/lib.rs:192:75 replace == with != in is_semver`)
+  - Note: the originally-named second target `agorabus` was substituted
+    because its lib-test build is red at source (doctor.rs:307 E0255/E0364)
+    — pre-existing agorabus debt, out of this PRD's scope. cargo-mutants
+    requires a green `cargo test --no-run` baseline, so `skill-manifest`
+    (a green-baseline crate) was used as the second data point instead.
 - **AC8**: `run-mutants.sh` exits 0 on success even when
   `kill_rate < 0.60` (Phase 1 is telemetry only). Non-zero exit only
   on infrastructure failure (cargo-mutants crashed, can't write
