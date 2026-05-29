@@ -209,7 +209,13 @@ Stage 4 blocks (with a clear per-AC diagnostic) if the gate fails.
 
 ## Non-functional
 
-- Default model: `claude-sonnet-4-6` (per claude-api skill convention).
+- **Default model: `claude-sonnet-4-6`** — *intentionally different
+  family from /autobuilder's pipeline default* (Opus 4.7; inherited
+  via `claude -p "/build"` with no `--model` flag in
+  `~/.local/bin/claude-build-headless.sh`). The independence is
+  load-bearing: the same model that wrote the test should not also
+  judge whether the test verifies its AC. Decision confirmed
+  2026-05-28 by jsy.
 - Privacy: only AC text + test source sent to API; no other PRD body,
   no journal, no env.
 - No streaming. Sync, blocking, one-shot per AC.
@@ -217,9 +223,9 @@ Stage 4 blocks (with a clear per-AC diagnostic) if the gate fails.
   from `target/autobuilder/ac-judge-cache/`. Cache key:
   `sha256(ac_text + test_source + model + prompt_version)`.
 
-## Open question
+## Open question (calibration only — model choice settled)
 
-Should the judge model be the SAME as the edit-agent (shared blind
-spots, cheaper) or DIFFERENT family (more independent, more expensive)?
-v0.1 uses Sonnet 4.6 by default but `--model` override lets us A/B.
-Decision deferred to the calibration step (AC6).
+Calibration data (AC6) will tell us if Sonnet 4.6 is *good enough* at
+the judge task. If false-positive rate exceeds 0.10, escalate to
+Opus 4.7 (matches pipeline, costs ~10× more); if cost matters more
+than verdict quality, drop to Haiku 4.5. v0.1 ships with Sonnet.
