@@ -3635,3 +3635,27 @@ self-review as the SOLE v1 producer. The multi-producer surface (a
 unified docket fed by vigil + homestead + /build, with cross-tool dedup)
 is real but premature until the single-producer contract ships. Don't
 draft it until docket-self-review-bind is green on this laptop.
+
+## 2026-05-29T01:00  /dream  vision-thrift  (+1 PRD)
+Drafted: PRD-brain-backend-ladder.md  (rust-extend -> wintermute-brain)
+Trigger: jsy decision this session — "default to local 3b. wire up switches to
+  use 8b, Sonnet and Opus when needed." Plus wm-local-llm is mid-build (the local
+  backend client it depends on).
+Design: extends the EXISTING LlmClient trait seam (wintermute-brain
+  src/daemon.rs:88) + swap-model/default-model CLI (src/main.rs:54-95). A
+  LadderClient dispatches a turn to local (wm-local-llm) vs Anthropic by active
+  tier; default_tier=local-3b; auto-escalates one rung when a local tier returns
+  LocalOutcome::Escalate; bounded at the top.
+Notes for /build:
+  - DEPENDS ON wm-local-llm (path dep) — build that FIRST (in flight now,
+    branch autobuilder/wm-local-llm). Don't start the ladder until wm-local-llm
+    passes its gate.
+  - COMPOSES WITH PRD-brain-prompt-cache (AC8): the Anthropic tiers must keep
+    their cache_control breakpoints. If prompt-cache hasn't landed, the ladder
+    just passes MessageRequest through unmodified.
+  - Load-bearing behavior change: build_anthropic_client -> None (no API key) no
+    longer disables the brain when default tier is Local. Missing key only
+    disables Sonnet/Opus tiers. This fixes the "brain mute, no key" outage class.
+  - Reuse the existing LlmClient fake-injection test pattern for AC2/AC3/AC5.
+Order now: prompt-cache (independent) ; wm-local-llm -> brain-backend-ladder ;
+  wm-router -> {wm-skills, wm-semcache, wm-local-llm-as-router-tier}.
