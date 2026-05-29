@@ -1,7 +1,7 @@
 # PRD: wintermute-browser — voice-driven web browsing
 
 **Author:** /dream (Claude Opus 4.7), with jsy
-**Status:** Draft v0.1
+**Status:** shipped
 **Date:** 2026-05-27
 **Vision:** `visions/wintermute.md` (Fleet 2 — action layer)
 **Builds on:** `PRD-wintermute-dialog.md`, `PRD-wintermute-brain.md`
@@ -14,10 +14,11 @@ deferred_ac_reasons:
   6: "wmd registering browser.* as Claude tools, confirmed via recall log — requires a running wmd brain plus recall, neither present offline"
   9: "kill -9 the Chromium subprocess then verify auto-restart — requires a real browser process to kill; only the connection-lost predicate is offline-testable"
   10: "real user voice round-trip (open→find→click→read, dialog speaks summary) — requires jsy plus the full live Fleet 1+2 stack (mic, TTS, brain, browser)"
-mock_unjustified_for: [1, 6, 10]
+mock_unjustified_for: [1, 6, 9, 10]
 mock_justifications:
   1: "Mocking Chromium's CDP responses would make the 5s-warm-browser timing AC tautological — the latency claim is the whole point and only a real browser proves it."
   6: "A mock wmd tool registry would assert nothing about whether the real brain actually wires and invokes browser.* in a live turn; the recall-log evidence requires the genuine integration."
+  9: "The restart half of AC9 (kill -9 subprocess → daemon detects within 2 s → next tool call succeeds) requires a real Chromium process to kill; the detection predicate is already covered by ac9_connection_lost_predicate_* lib tests, and a mock that fakes SIGKILL on a fake subprocess proves nothing about the real process lifecycle."
   10: "An end-to-end voice round-trip is inherently a live-human, full-stack acceptance; any mock would substitute the very components (mic/TTS/brain/browser) the AC exists to validate together."
 
 ---
