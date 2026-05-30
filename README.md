@@ -203,6 +203,13 @@ in the skill doc for the per-slice steps. The wider ecosystem is indexed
 in [`j0yen/wintermute`'s REPOS.md](https://github.com/j0yen/wintermute/blob/master/REPOS.md);
 its `bootstrap/install.sh` clones each published slice on a fresh machine.
 
+## Recent
+
+- **v0.2.0** (2026-05-30): added `autobuilder publish` subcommand — codifies the
+  Stage-6 publish pipeline (README/LICENSE generation, branch normalize, `wm-publish`
+  repo create, `wm-push`, `REPOS.md` update) into a deterministic, idempotent,
+  dry-run-capable command (PRD-autobuilder-publish, ACs 1–9 green).
+
 ## License
 
 Dual-licensed under MIT OR Apache-2.0.
