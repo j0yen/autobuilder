@@ -36,7 +36,7 @@ missing_panics_doc = "warn"
 
 [package]
 name = "autobuilder"
-version = "0.1.0"
+version = "0.2.0"
 description = "PRD-driven, rigorously validated Rust code generation: companion binary for the autobuilder Claude Code skill."
 edition.workspace = true
 rust-version.workspace = true
