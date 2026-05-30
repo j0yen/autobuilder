@@ -22,6 +22,7 @@ mod intake;
 mod loop_runner;
 mod metric_harness;
 mod postmortem;
+mod publish;
 mod receipt;
 mod reviewer;
 mod rollback;
@@ -85,6 +86,9 @@ enum Command {
 
     /// Drive a multi-slice campaign from experiment.toml (Stage 2.5).
     Experiment(experiment::Args),
+
+    /// Publish a finished slice as its own github.com/j0yen/<slug> repo (Stage 6).
+    Publish(publish::Args),
 }
 
 fn main() -> Result<()> {
@@ -103,5 +107,6 @@ fn main() -> Result<()> {
         Command::Evolve(args) => evolve::run(args),
         Command::Adversarial(args) => adversarial::run(args),
         Command::Experiment(args) => experiment::run(args),
+        Command::Publish(args) => publish::run(args),
     }
 }

@@ -1,0 +1,48 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "tests/fixtures/publish/PRD.md",
+  "intent_slug": "publish-fixture",
+  "root_motivation": "A deterministic fixture slice whose intent-card drives the publish subcommand's hermetic tests; its root motivation is echoed verbatim into the generated README overview.",
+  "user_persona": "The publish subcommand's integration tests.",
+  "unfakeable_metric": {
+    "name": "ac_passing_count",
+    "lower_is_better": false,
+    "harness_command": "scripts/run-metrics.sh",
+    "target": 1
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "The first must-level acceptance criterion that should appear in the README.",
+      "test": "tests/acceptance_ac1.rs"
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "The second must-level criterion, also rendered as a README list item.",
+      "test": "tests/acceptance_ac2.rs"
+    },
+    {
+      "id": "AC3",
+      "level": "SHOULD",
+      "description": "A SHOULD-level criterion that must NOT appear in the README MUST list.",
+      "test": "tests/acceptance_ac3.rs"
+    }
+  ],
+  "scope": ["fixture-only"],
+  "non_goals": ["being-built"],
+  "hard_constraints": {
+    "rust_edition": "2024",
+    "target_kind": "cli",
+    "deny_unsafe": true
+  },
+  "five_whys_trace": [
+    {"why": 1, "q": "why fixture", "a": "to test publish"},
+    {"why": 2, "q": "why minimal", "a": "to keep the AC matrix readable"},
+    {"why": 3, "q": "why two MUST acs", "a": "to assert README renders each MUST and skips SHOULD"},
+    {"why": 4, "q": "why cli/2024", "a": "simplest target that passes intake"},
+    {"why": 5, "q": "why this slug", "a": "matches the slug regex without colliding with a real repo"}
+  ],
+  "created_at": "2026-05-28T12:00:00Z"
+}
