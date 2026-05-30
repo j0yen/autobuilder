@@ -107,6 +107,43 @@ These three are mutually independent in terms of acceptance — each is
 tested standalone. The order above is "smallest unblock first, then
 the one with the most consumers waiting, then the cleanup."
 
+## Fleet 2a — the memlog consumer spine (drafted 2026-05-30)
+
+The `kernel-pkg-postinstall` branch of Fleet 1 **shipped** (archived commit
+`c712c9d`, "pkgrel6 self-sufficient install shipped"): the PKGBUILD now
+carries `linux-wintermute-memlog.sysusers` (`g memlog -`) + udev rule +
+`install=` scriptlet. But the laptop still boots **pkgrel-5**, which
+predates the assets — so `getent group memlog` is empty and `/dev/memlog`
+is `root:root`, unchanged. The fix is *staged, not active*. And even once
+activated, the group is created empty (no user) and nothing writes to the
+device. Three PRDs close the gap from "install machinery exists" to "the
+circular log actually fills and is readable":
+
+1. **PRD-memlog-group-autojoin** — `post_install`/`post_upgrade` auto-adds
+   the invoking user (`SUDO_USER`/`logname`) to `memlog`, removing the
+   manual `usermod` step the install scriptlet currently punts to the user.
+   Independent, smallest. Ships in pkgrel-8 (repack, no kernel rebuild).
+2. **PRD-memlog-activation-self-review** — teaches `/self-review` to
+   recognize the `staged-awaiting-install` state and escalate-once with an
+   activation runbook, instead of re-flagging "memlog EACCES" as a fresh
+   anomaly every run (~26 runs and counting). Independent; shell;
+   serialize-on-SKILL.md with the other self-review-playbook PRDs.
+3. **PRD-memlog-precompact-witness** — installs the `memlog` reader and
+   wires a PreCompact hook that appends about-to-be-discarded context to
+   `/dev/memlog` (today's only PreCompact hook is a sound effect). This is
+   the producer/consumer the architecture's top "CONSUMERS" layer gates on.
+   Hard-ordered after group activation for the write path; fails open until
+   then so it's safe to install early.
+
+Order: `group-autojoin` (+ user-gated install/reboot) → `precompact-witness`
+write path; `activation-self-review` is independent and ships anytime.
+
+**Two open questions resolved by this pass:** the `memlog` group GID stays
+**dynamic** (`g memlog -`) — no cross-host record sharing planned. And the
+membership gap is closed at **package post_install** (durable, one-time),
+not per-session — the per-session pevent/cgroup auto-add stays the separate
+`memlog-readable-by-default` bullet below.
+
 ## Fleet 2 — future `/dream extend onramp`
 
 Bullets only; draft after Fleet 1 ships ≥2 of 3 components.

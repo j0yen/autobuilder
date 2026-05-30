@@ -4374,3 +4374,51 @@ Notes for /build:
     CLAUDE_SELF.md + toolkit memory + drift skill; warden is the VISION name.
 Open questions: rename bpolicy→warden? (leaning no); should --ttl default-on
   (drafted yes, 30m); allow-list one-map-reloaded vs N-maps (leaning one).
+
+## 2026-05-30T05:10  /dream  vision-onramp (extend, Fleet 2a — memlog consumer spine)
+Drafted: PRD-memlog-group-autojoin.md, PRD-memlog-activation-self-review.md,
+  PRD-memlog-precompact-witness.md
+Vision: visions/onramp.md (Fleet 2a section added)
+Seed: bare /dream; dominant verified signal = "memlog EACCES" re-flagged in
+  ~26 consecutive self-review reflective memories (01KSVDJF.../01KSV6Q9.../
+  01KSTZX7...). Traced to root cause LIVE this pass: the postinstall fix
+  (sysusers `g memlog -` + udev) SHIPPED at pkgrel-6 (archived c712c9d), but
+  the laptop boots pkgrel-5 which predates it -> group never created. NOT an
+  authoring gap (don't redraft PRD-kernel-pkg-postinstall, it's archived);
+  it's an ACTIVATION + CONSUMER gap.
+Verified state: uname=7.0.10-arch1-5-wintermute, pacman -Q linux-wintermute
+  =7.0.10.arch1-5 (both pkgrel-5); getent group memlog = empty; /dev/memlog
+  = root:root 0660; sysusers file = `g memlog -` (group only, NO membership);
+  install scriptlet punts to manual `usermod -aG memlog`; only PreCompact
+  hook = peon-ping (a sound); `memlog` reader NOT in ~/.local/bin (only
+  memlog-witness daemon is).
+Order:
+  memlog-group-autojoin  (mixed -> ~/wintermute/wintermute-kernel; pkgrel-8
+    repack, NO kernel rebuild; auto-adds SUDO_USER to memlog group)
+   └─(user-gated: pacman -U pkgrel-8 + reboot, or no-reboot systemd-sysusers
+      + udevadm trigger since the memlog driver is already loaded)─►
+  memlog-precompact-witness (mixed -> ~/.claude hooks + install `memlog`
+    reader; PreCompact producer; fails open until group joined)
+  memlog-activation-self-review (shell; INDEPENDENT; ships anytime)
+Notes for /build:
+  - memlog-activation-self-review edits self-review SKILL.md. SERIALIZE on
+    SKILL.md with PRD-warden-self-review / PRD-vigil-selfreview-concurrent-
+    guard / PRD-agorabus-reload-self-review — never apply two SKILL.md PRDs
+    in parallel. Order between them is semantically free.
+  - memlog-group-autojoin edits the kernel PKGBUILD packaging
+    (~/wintermute/wintermute-kernel/pkg/linux-wintermute.install + PKGBUILD
+    pkgrel bump). It does NOT rebuild the kernel — reuse the repack path
+    from build.log.pkgrel6-repack-*. Use apply-agentns.py's idempotent
+    anchor-edit pattern, not raw .patch splicing.
+  - memlog-precompact-witness AC6 (survival smoke) is DEFERRED-GATED on the
+    memlog group being activated+joined at build time; declare deferred_acs
+    if not, same as agentns-claude's boot-gated ACs. ACs 1-5,7 (reader
+    install + fail-open hook) are testable + useful immediately.
+  - NONE of these activate the kernel package or reboot. Install + reboot
+    stays a user decision (the recurring "pacman SKIPPED protected: linux"
+    line in every self-review).
+Open questions: should the precompact snapshot be the full transcript tail
+  or an LLM-summarized digest? (Drafted as bounded head/tail slice to the
+  device record-size cap; a digest needs a local-LLM call that may not be
+  affordable at compaction time. Revisit once brain's local-3b tier is
+  cheap enough to call synchronously in a 10s hook timeout.)
