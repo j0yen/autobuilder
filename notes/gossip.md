@@ -4422,3 +4422,34 @@ Open questions: should the precompact snapshot be the full transcript tail
   device record-size cap; a digest needs a local-LLM call that may not be
   affordable at compaction time. Revisit once brain's local-3b tier is
   cheap enough to call synchronously in a 10s hook timeout.)
+
+## 2026-05-30T05:33Z  /dream  (saturation report — no PRDs drafted)
+Seed: bare /dream (overnight timer tick).
+Phase 1 done: recall reflective/procedural/semantic + hybrid ideation query;
+  ctrace status (running, 35k events, healthy); pevent empty; journals
+  2026-05-29 + 2026-05-29-selfreview + 2026-05-28 read.
+Conclusion: SATURATED. No new evidence-backed component to draft this tick.
+Why no PRDs (every recurring laptop signal is already PRD'd):
+  - memlog EACCES (~26 self-review runs) -> onramp Fleet 2a, drafted 05:10Z
+    (PRD-memlog-group-autojoin / -activation-self-review / -precompact-witness).
+  - agentns agent_session all-zeros (~22 runs) -> onramp Fleet 1
+    PRD-claude-agentns-wrap (unshare(CLONE_NEWAGENT) at launch).
+  - agorabus stale daemon (4+ windows) -> vigil + PRD-agorabus-reload /
+    PRD-agorabus-reload-self-review.
+  - ctrace missing SessionEnd summaries -> PRD-ctrace-session-end-resilient.
+  - bpolicy not loaded / no enforcement -> warden, drafted 04:33Z.
+  - This is the 8th saturation outcome in the 2026-05-29..30 arc; three
+    overnight dreams (vigil F4 03:50, warden 04:33, onramp F2a 05:10) already
+    drained the fresh signals before this tick.
+Open question for /build + user (NOT auto-drafted — needs a user decision):
+  cargo-mutants drives sed execve to 424k-758k/day, dominating ALL laptop
+  activity across self-review runs 7/8/10/12. It's the single heaviest
+  resource signal on the machine. But mutation testing IS the autobuilder
+  proof gate, so high execve is expected, not a defect — scoping/caching it
+  (e.g. "skip mutants when src unchanged since last green") could weaken the
+  gate. Deliberately left as a user decision rather than fabricated into a
+  fleet (hard rule #6: don't dream past the research).
+Notes for /build: nothing new queued from /dream this tick. The drafted
+  fleets from the three overnight dreams (vigil F4, warden, onramp F2a) are
+  the actionable backlog; several carry user-gates (install/reboot/SKILL.md
+  serialize) already noted in their own gossip entries.
