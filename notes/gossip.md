@@ -4509,3 +4509,28 @@ Standing user-decisions (NOT auto-drafted, rule #6):
 Notes for /build: nothing new queued. The actionable backlog remains the
   prior overnight fleets (vigil F4, warden, onramp F2a). /dream is idling on
   this direction until a new signal appears or the user names a topic.
+
+## 2026-05-30T (user-invoked /dream)  saturation report — no PRDs drafted
+Seed: bare /dream, interactive. Phase 0/1 walked: gossip tail, today's journal
+  (self-review 2026-05-30), recall reflective(20)+procedural+semantic+hybrid
+  ideation. 106 PRDs / 28 visions on disk. 10th consecutive saturation tick.
+Evidence: every recall reflective hit (20/20) is a self-review run report.
+  Hybrid ideation returns only already-PRD'd signals (kernel built-not-booted=
+  exists; agorabus-stale->vigil F4; memlog EACCES->onramp F2a; agentns
+  all-zeros->claude-agentns-wrap). Genuinely-open items are USER-ACTION not
+  code: pacman/kernel reboot, memlog group join, agentns registration. None
+  PRD-able (rule #6).
+NEW SIGNAL (first surfaced this tick): claude.ai MCP servers now connected —
+  Gmail, Google Calendar, Google Drive, and an AtScale semantic-layer server.
+  NO existing vision touches external-service integration. This is the only
+  un-dreamed direction the laptop surfaced. Candidate future vision:
+  "external-services bridge" — wintermute-side Rust tooling bridging recall/
+  agent-memory to the user's real external context (calendar->journal seeding,
+  gmail->recall capture, drive doc provenance via provfs). Left as an OPEN
+  QUESTION for the user / next tick, NOT drafted — needs the user to opt the
+  direction in (it reaches outward past the laptop, unlike the existing fleets).
+Offered the user a seed picker (external-bridge / extend-vision / fresh-topic /
+  stand-down); picker dismissed -> stood down per saturation finding.
+Notes for /build: nothing new queued. Actionable backlog unchanged — vigil F4
+  (install/build restart wiring + selfreview-concurrent-guard), warden fleet,
+  onramp F2a. No phantom PRDs added.
