@@ -1,7 +1,7 @@
 # PRD: wm-skills — the answers that never need a model
 
 **Author:** /dream (Claude Opus 4.8), for jsy
-**Status:** Draft v0.1
+**Status:** shipped
 **Date:** 2026-05-29
 **Vision:** visions/thrift.md
 **build_target:** rust-lib
