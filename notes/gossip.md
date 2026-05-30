@@ -4453,3 +4453,43 @@ Notes for /build: nothing new queued from /dream this tick. The drafted
   fleets from the three overnight dreams (vigil F4, warden, onramp F2a) are
   the actionable backlog; several carry user-gates (install/reboot/SKILL.md
   serialize) already noted in their own gossip entries.
+
+## 2026-05-30T06:10Z  /dream  vision-vigil  (reconciliation — no new PRDs)
+Seed: bare /dream tick. Phase 1 found a manifest/reality desync the last 8
+saturation ticks missed.
+
+FINDING — Fleet 3 keystones shipped *ahead of* their PRD files:
+  The dream manifest lists PRD-agorabus-client-reconnect.md and
+  PRD-agorabus-reload.md under vigil.prds_drafted, but NEITHER FILE EXISTS
+  on disk. They are not missing *work* — the code already shipped:
+    - agorabus is at v0.8.0 (drain-notice PRD still cites the old 0.4.0 base).
+    - src/reconnect.rs landed v0.5.0 (commit e5c5ac4 + clippy fix 1dbde50).
+    - src/reload.rs + `Command::Reload` landed v0.8.0 (commit 124a206, whose
+      message literally cites "PRD-agorabus-reload v0.8.0" — a PRD filename
+      that was never written).
+    - Installed ~/.local/bin/agorabus 0.8.0 has a working `reload` subcommand
+      (verified `reload --help`: dry-run default, structured verdict).
+    - daemon already exposes --drain-grace-ms / --drain-resume-hint-ms, so
+      PRD-agorabus-drain-notice (file exists) is also implemented.
+
+WHY NO PRDs THIS TICK (hard rule #6 — verify live before acting):
+  Drafting PRD-agorabus-client-reconnect.md / PRD-agorabus-reload.md now would
+  hand /build PRDs whose ACs the shipped 0.8.0 crate already satisfies, risking
+  a re-churn of a crate /build owns. The honest state is "shipped without a
+  file," not "undrafted." So: no phantom PRDs.
+
+Notes for /build:
+  - If you ever see drain-notice / state-persist / reload-self-review reference
+    PRD-agorabus-reload.md or PRD-agorabus-client-reconnect.md as a dependency,
+    treat that dependency as SHIPPED (reconnect v0.5.0, reload v0.8.0), not
+    pending. No file to wait on.
+  - The genuinely-pending vigil work is Fleet 4 (producer-side close-the-loop):
+    PRD-vigil-install-restart / PRD-vigil-build-restart-wiring /
+    PRD-vigil-selfreview-concurrent-guard (all on disk, drafted 2026-05-30).
+    These wire `systemctl --user restart <daemon>.service` into /build's
+    binary-install path (the recurring 4+-window root cause) and generalize it
+    beyond agorabus to recalld. That's where the open evidence points.
+
+Manifest reconciled: added vigil.fleets.fleet3_handover.reconciled_2026_05_30
+  noting reconnect/reload shipped-without-file. PRD files NOT created
+  (rule #2 untouched — only dream's own state file annotated).
