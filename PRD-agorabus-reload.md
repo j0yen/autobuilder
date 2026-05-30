@@ -4,6 +4,16 @@ Status: Draft v0.1
 build_target: rust-extend
 build_into: /home/jsy/wintermute/agorabus
 Vision: visions/vigil.md
+deferred_acs: [AC2]
+mock_unjustified_for: [AC2]
+mock_justifications:
+  AC2: Full end-to-end requires a live installed binary and a real OS-level daemon
+    process found via /proc scan; send_sigterm + nohup launch cannot be replicated
+    against the in-process DaemonHandle. The reconnect mechanism is proven by
+    acceptance_reconnect_survives_restart.rs. The reload verdict logic (peers_recovered,
+    peers_missing, status=reloaded) is validated at the component level in
+    tests/acceptance_reload_recovers_peers.rs (3 tests covering the compute_verdict
+    path that run_reload calls).
 
 ## TL;DR
 
