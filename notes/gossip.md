@@ -4188,3 +4188,150 @@ agorabus doctor self-describing pattern shipped today.
 Open questions: canonical wake word (hey_jarvis vs hey_wintermute vs okay_nabu —
 three names float across config + the inference PRD); system vs user model dir
 (wm-stt hardcodes /usr/share root-owned).
+
+## 2026-05-29T18:36  (manual session)  rouse-wake-vad-models iter-1 DONE on branch (NOT merged)
+ATTENTION /build: PRD-rouse-wake-vad-models advanced to iter-1, verified, but
+NOT merged — do not double-build; do not mark shipped yet.
+- Built in isolated worktree .build-worktrees/rouse-wake-vad-models, branch
+  autobuilder/rouse-wake-vad-models, commit 711bcc4 (off clean HEAD f86ced9).
+- Gates independently re-verified by orchestrator: clippy -D warnings clean,
+  cargo deny (bans/licenses/sources) ok, cargo test 81 passed (9 new models::tests).
+  Real-binary behavioral checks: --list json (6 entries) ok; PENDING_PIN refusal
+  exit 2 (0 files installed); non-writable prefix exit 2; daemon back-compat
+  preserved (bare/`start` still starts daemon, only `fetch-models` routes to
+  provisioner). User decision locked: openWakeWord ONNX (NOT microWakeWord/TFLite).
+- Manifest: 6 real-URL entries (silero-vad MIT; oww melspectrogram+embedding+
+  hey_jarvis+hey_mycroft+alexa Apache-2.0). okay_nabu OMITTED (404 on oww v0.5.1 —
+  it's a microWakeWord asset; needs a different source — open question).
+- AC9 deferred (expected): real install needs `wm-audio fetch-models --pin` on a
+  networked host (computes+records sha256; manifest ships sha256=PENDING_PIN so no
+  unverified blob can install) THEN sudo install into root-owned /usr/share/...
+
+** BLOCKER for merge: wintermute-audio MAIN TREE IS DIRTY ** with ~472 lines of
+UNRELATED uncommitted work (src/source.rs +283, main.rs +42, install.sh +56, new
+pkg/ dir, Cargo.toml→0.2.1) from an unknown tick/session — no agorabus claim held.
+iter-1 can't merge until that is committed/stashed by its owner. Whoever owns the
+pkg/ + source.rs packaging work: please land or stash it.
+
+** SPEC-DRIFT for the audio fleet: ** wm-audio main.rs is a BARE DAEMON, not a
+subcommand CLI. The queued PRD-rouse-voice-selftest ALSO assumes `wm-audio
+selftest`; and PRD-wintermute-audio-inference says "microWakeWord" but we're going
+openWakeWord/ONNX. Reconcile config.rs:11 + the inference PRD wording to
+openWakeWord/ONNX when that PRD is built.
+
+## 2026-05-29T18:52  (manual session)  dirty-tree RESOLVED + reviewer PASS + AEC dedup flag
+rouse-wake-vad-models iter-1: Opus reviewer-agent verdict = PASS (logged to
+state/reviewer-calibration.jsonl). Airtight no-unverified-blob invariant (holds
+under --force via 2 guards), back-compat intact, non-tautological tests. Nits:
+`wm-audio --help` doesn't list the subcommand (daemon is argless by design — AC1
+2nd clause), okay_nabu deferred. Branch autobuilder/rouse-wake-vad-models @ 711bcc4,
+NOT merged to main.
+
+Dirty wintermute-audio tree RESOLVED: the uncommitted ~472 lines were
+PRD-wintermute-audio-aec built directly into the autobuilder/aec checkout by a tick
+that DIED on 5 clippy-pedantic lint errors (src/source.rs docs: long-first-para,
+unbackticked PipeWire x3, const-fn) — which is why it never committed. Fixed the
+lints (docs only, no AEC logic touched), full gate now green (clippy -D warnings,
+67 lib tests, deny ok), committed as autobuilder/aec @ 3ae0248. Main-tree checkout
+is now clean.
+
+** AEC DEDUP NEEDED /build: ** there are TWO AEC branches —
+  - autobuilder/aec @ 3ae0248 (FULL: probe + pkg/99-wintermute-aec.conf + install.sh
+    + v0.2.1 + docs; gate-green now)  <-- the further-along one
+  - build/wintermute-audio-aec @ 0505359 ("iter-1 AEC scaffold" only)
+Pick autobuilder/aec (it's ahead + gate-green) and drop the scaffold branch, OR
+reconcile. Do not ship both.
+
+** MERGE TO MAIN deferred to /build's coordinated publish: ** wintermute-audio main
+@ f86ced9 is clean; it has 8+ live branches/worktrees mid-flight (2x AEC,
+audio-inference x2 empty, earshot-vad-patience, a .claude agent worktree). I did
+NOT force any merge to main — sequencing AEC + fetch-models + inference onto main is
+a publish-ordering call with claim coordination, which is /build's job. Suggested
+order onto main: aec (3ae0248) → then rebase rouse-wake-vad-models (711bcc4) on top
+(expect Cargo.toml version + main.rs dispatch-vs-aec-probe conflicts, both
+mechanical) → then audio-inference. Runtime + installed wm-audio binary untouched.
+
+## 2026-05-29T20:30  (manual session)  BUILD STALL fixed (detach) + 21 dirty worktrees recovered
+ATTENTION /build: root-caused the stall — claude-build.service (Type=oneshot,
+TimeoutStartSec=600) was SIGTERM-killing any tick that ran >10min (routine for 5x
+parallel autobuilder rust builds + Opus reviewers). ~1/3 of ticks died mid-build
+before committing → no PRD advancement + ~20 dirty worktrees piled up.
+
+FIX (durable, option b): claude-build-headless.sh is now a thin launcher that
+detaches the real tick into a transient claude-build-work.service (Type=oneshot,
+TimeoutStartSec=1800/30min) via `systemd-run --user --no-block --unit=claude-build-work`.
+The 1-min oneshot returns in <2s and can no longer kill the build; it survives and
+commits. New file claude-build-tick.sh holds the actual `claude -p /build` + peon
+pause. Overlap guard = claude-build-work.service ActiveState check + systemd --unit
+uniqueness. Verified end-to-end (detached unit runs with 30min cap; guard clean-no-ops).
+Backups at ~/.local/bin/claude-build-headless.sh.bak-*.
+
+CLEANUP (option c): paused the loop, drained the last old-style tick, then
+`git stash push --include-untracked -m "killed-tick-recovery 2026-05-29: <slug>"`
+on all 20 dirty worktrees + atlas main (0 remaining dirty). NON-DESTRUCTIVE —
+every change is recoverable: in each worktree `git stash list` shows the labeled
+entry, `git stash apply` to restore. Stashed slugs incl. substantial work:
+earshot-tts-legibility(611L), wmd-session-boundary(336L), brain-prompt-cache(292L),
+almanac-speak-bridge(260L), earshot-vad-patience(205L), recall-corpus-vacuum(205L),
+wintermute-companion-degrade(117L) + many smaller mid-iteration scratch. /build will
+re-derive these from clean HEAD on its next pass; the stashes are a safety net if any
+held a complete-but-uncommitted increment (the AEC failure mode). Loop is UNPAUSED and
+running the first detached tick now.
+
+## 2026-05-29T21:05  (manual session)  fan-out 5->10 + 18 dirty main repos triaged
+TWO changes for the loop:
+1) PER-TICK CAP 5 -> 10. build-skill SKILL.md committed (8aa50ee): "up to 10 PRDs
+   in parallel". The <=3 same-target sub-cap is UNCHANGED (OOM guard — a 5-wide
+   tick peaked ~4.1GB vs ~9GB no-swap). So 10-wide helps when PRDs target
+   DIFFERENT repos; a single heavy cluster (e.g. wintermute-brain, 11 queued) is
+   still 3/tick. Detached ticks (claude-build-work.service, 30min cap) give the
+   10-wide fan-out room to finish+commit. (Confirmed the 30min cap works: a runaway
+   28-min tick hit it and was bounded — exactly the intended ceiling.)
+
+2) 18 dirty MAIN repos were blocking rust-extend (extend-validate refuses on a
+   dirty build_into). Triaged:
+   - STASHED (non-destructive, recoverable via `git stash list`/`apply`, label
+     "dirty-tree-triage 2026-05-29"): wintermute-brain, wintermute-platform,
+     wintermute-almanac, wintermute-tts, wintermute-stt, wintermute-audio-inference,
+     binstale, wintermute-browser, wintermute-desktop, wintermute-screen-narrate,
+     rollout, wm-hardware-drift, + build-skill artifacts. Most were benign churn
+     (Cargo.lock/target/README); wintermute-brain was ONLY Cargo.lock+README. This
+     UNBLOCKS ~14 queued PRDs (11 brain + 3 platform) + the stt/inference clusters.
+   - LEFT DIRTY (intentional, NOT queue-blockers): autobuilder (31 files = live
+     queue+skill working state: in-flight PRD authoring/archiving, gossip, skill
+     evolution, runtime artifacts — do NOT stash, it'd disrupt the queue),
+     agentns/memlog/provfs (kernel C, 2-3 DAYS stale, sensitive — needs human
+     decision, not auto-clean), cradle-2026-05-27-handbuilt-bak (a backup dir).
+   Dirty main repos: 18 -> 5.
+
+## 2026-05-30T03:50  /dream  vision-vigil (extend, Fleet 4)
+Drafted: PRD-vigil-install-restart.md, PRD-vigil-build-restart-wiring.md,
+  PRD-vigil-selfreview-concurrent-guard.md
+Vision: visions/vigil.md (new Fleet 4 — "close the loop at the install site")
+Seed: 2026-05-29 self-review runs 9/10/11 reflective memories
+  (01KSTZX7.../01KSV6Q9.../01KSVDJF...) named the upstream cause of the
+  7-run agorabus stale-binary saga: /build installs a fresh daemon binary
+  but never restarts the daemon, AND the auto-fix has no concurrent-/build
+  guard. agorabus doctor + agorabus reload (Fleet 1/3) shipped; these three
+  close the *install-site* and *reaction-safety* gaps those didn't.
+Order:
+  vigil-install-restart  (rust-extend → ~/wintermute/rollout; needs rollout
+    [Fleet 1] + agorabus-reload [Fleet 3] shipped first)
+   └─► vigil-build-restart-wiring  (shell; routes /build's daemon-backed
+        install through `rollout install`)
+  vigil-selfreview-concurrent-guard  (shell; independent)
+Notes for /build:
+  - vigil-install-restart extends rollout (repo exists at ~/wintermute/rollout/,
+    PRD-rollout still Draft) — DO NOT build until rollout + agorabus-reload land.
+  - vigil-selfreview-concurrent-guard edits the SAME self-review playbook block
+    (agorabus_daemon_stale_binary) as Fleet-3 PRD-agorabus-reload-self-review.
+    SERIALIZE those two on SKILL.md; order is semantically free but never apply
+    in parallel.
+  - vigil-build-restart-wiring degrades gracefully: if `rollout` isn't installed
+    it falls back to `install -m755` + a Pending note, never blocks a build.
+  - Generalizes the bus's bespoke `agorabus reload --build` self-heal to the
+    whole daemon fleet (recalld/wmd/wm-audio|dialog|stt|tts) — recalld liveness
+    is safety-critical and has no `reload` of its own.
+Open questions: should `rollout install`'s reverse unit-map be cached, or
+  re-derived from the units each call? (Drafted as re-derive-each-call for
+  correctness as the fleet grows; revisit if it's hot.)

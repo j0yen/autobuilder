@@ -199,6 +199,88 @@ All four agorabus extends touch the same crate — **serialize** their
 Cargo churn rebases, same caution Fleet 1's gossip raised for the
 companion fleet.
 
+## Fleet 4 — close the loop at the install site (drafted 2026-05-30)
+
+Fleet 1 *detects* staleness. Fleet 3 makes the *reaction* (a bounce)
+non-destructive. Both are downstream of the fact that staleness keeps
+*happening*. Three self-review runs on 2026-05-29 (runs 9, 10, 11)
+named the upstream cause out loud — verbatim from the run-10 reflective
+memory:
+
+> RECURRING ROOT CAUSE: /build installs new agorabus binary **without
+> restarting the daemon**; consider wiring `systemctl --user restart
+> agorabus.service` into /build's agorabus-install path.
+
+And `agorabus reload --build` (Fleet 3) self-heals *the bus* — but it is
+agorabus-specific. The same decoupling bites every other daemon-backed
+binary the laptop ships: `recalld`, `wm-audio|dialog|stt|tts`, `wmd`
+all have a systemd-user unit pointing at an installed binary
+(`%h/.local/bin/...` or `%h/.cargo/bin/...`) and **none has a `reload`
+subcommand**. When /build reinstalls a fresh `recalld`, nothing restarts
+`recalld.service` — and recalld liveness is safety-critical. The bus
+got a bespoke fix; the rest of the fleet did not.
+
+The second gap is in the *reaction* path's safety. Run-11's reflective
+memory (verbatim):
+
+> PLAYBOOK GAP — `agorabus_daemon_stale_binary` auto-fix conditions
+> don't check whether /build is concurrently building the same crate;
+> that concurrent-build race is the real reason to defer, not the
+> subscriber ceiling.
+
+Run 11 deferred the auto-fix *by hand* because a live /build tick was
+mid-rebuild of agorabus; a self-review rebuild/install/restart would
+have raced /build on the same daemon + socket. The playbook's
+"Auto-fix conditions (ALL must hold)" list
+(`self-review/SKILL.md:262-272`) has no such guard — next time the
+human isn't watching, the two will collide.
+
+Fleet 4 closes both: make install *imply* restart for the whole fleet,
+and make the reaction path refuse to act while /build is building the
+same crate.
+
+1. **vigil-install-restart** (`rust-extend` → `~/wintermute/rollout/`,
+   new `Command::Install` + reverse unit-map) — `rollout install
+   <binary> --dest <path>`: atomically install a freshly-built binary,
+   then look up which live systemd-user unit `ExecStart`s that dest
+   (reverse of the `ExecStart=`→binary map: agorabus, recalld, wmd,
+   wm-audio|dialog|stt|tts) and restart it through the *best available*
+   path — `agorabus reload --build` for the bus (non-destructive, Fleet
+   3), window-guarded `systemctl --user restart` for the rest. Emits a
+   verdict (`{installed, unit, restart_path, verdict}`). If the dest
+   backs no unit, it's a plain install. Generalizes the bus's bespoke
+   self-heal to the whole fleet. Depends on `rollout` (Fleet 1) +
+   `agorabus reload` (Fleet 3) shipping.
+
+2. **vigil-build-restart-wiring** (`shell` → /build's binary-install
+   step) — route every daemon-backed `rust-extend` ship through
+   `rollout install` so a fresh binary never strands a stale daemon.
+   The convention: if a PRD's `build_into` resolves to a binary that an
+   active systemd-user unit `ExecStart`s, /build's install must restart
+   that unit (via `rollout install`), not just `install -m755` and walk
+   away. This is the prevention-at-source fix the three run-9/10/11
+   memories asked for. Depends on PRD 1.
+
+3. **vigil-selfreview-concurrent-guard** (`shell` → edits
+   `~/.claude/skills/self-review/SKILL.md` playbook
+   `agorabus_daemon_stale_binary`) — add a concurrent-build guard to the
+   "Auto-fix conditions": if `systemctl --user is-active
+   claude-build-work.service` is `active` (the detached /build tick unit,
+   30-min cap) — or the agorabus repo's `.git/index.lock` exists — defer
+   the auto-fix and write Pending with reason "concurrent /build tick may
+   be rebuilding agorabus; a self-review reload would race it on the same
+   daemon + socket." Codifies run-11's hand-made deferral. Independent of
+   PRDs 1–2, but **serialize on SKILL.md** with the Fleet-3
+   `agorabus-reload-self-review` PRD (both edit the same playbook block).
+
+**Order (Fleet 4):**
+
+```
+vigil-install-restart            (rust-extend rollout; needs rollout + agorabus-reload shipped)
+   └──► vigil-build-restart-wiring   (shell; routes /build install through `rollout install`)
+vigil-selfreview-concurrent-guard    (shell; independent — serialize on SKILL.md with reload-self-review)
+```
+
 ## Fleet 2 (not drafted — honest deferrals per dream rule 6)
 
 - **rollout-window-guard** — refuse/defer restart of a voice daemon
