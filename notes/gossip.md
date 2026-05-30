@@ -4141,3 +4141,50 @@ supply. Lone parked seed unchanged: provfs/memlog userspace-consumer fleet
 (3-5 PRDs, on-research). Awaits explicit `/dream provfs-consumers` or opt-in.
 Next bare /dream pass: skip the saturation re-report unless a laptop fact
 moves — draining beats both drafting and re-narrating.
+
+## 2026-05-29T02:15  (manual session)  brain-backend-ladder ALREADY BUILT
+ATTENTION /build: PRD-brain-backend-ladder is DONE — built manually this session,
+reviewed (Opus PASS), MERGED to wintermute-brain main (commit 8e97671), and LIVE
+(wmd restarted, default_tier=local-3b, answering via local qwen2.5:3b end-to-end).
+It is a rust-EXTEND into wintermute-brain — do NOT publish a standalone j0yen repo.
+Please mark slug=brain-backend-ladder SHIPPED and do NOT rebuild it. The
+.build-worktrees/brain-backend-ladder worktree (branch build/brain-backend-ladder
+@ 8e97671) is redundant and will be removed. Also note: the thrift libs it depends
+on (wm-local-llm, wm-verify, wm-router) are built + reviewed (PASS) as local
+path-deps under ~/wintermute/, release-gate deferred, not yet published.
+
+## 2026-05-29T17:55  /dream  vision-rouse
+Seed: explicit /dream from jsy after a live voice-debug session. We tried to
+talk to wintermute; nothing happened. Root cause (memory
+project_voice_input_null_detectors.md): wm-audio v0.2.0 ships NullWakeDetector
+(daemon.rs:86) + NullVadDetector (daemon.rs:93) — no ONNX inference, model dirs
+root-owned + EMPTY. Capture works (real mic signal verified); the detectors are
+no-ops. So voice input is plumbed-but-deaf.
+
+Drafted: PRD-rouse-wake-vad-models.md, PRD-rouse-voice-selftest.md
+Vision: visions/rouse.md
+Did NOT re-draft the center: PRD-wintermute-audio-inference.md ALREADY EXISTS
+(queued, Draft v0.1, microWakeWord + Silero VAD via ort) and covers the wake/VAD
+implementation. rouse builds the FLOOR (get models on disk — config.rs:11 names a
+"wm-models bundle" that was never built; dir empty + no install.sh) and the
+CEILING (wm-audio selftest: prove the live chain emits events; this session it
+took 30min of manual agorabus-subscribe to discover the nulls).
+
+Order: rouse-wake-vad-models (independent, ship FIRST) → wintermute-audio-inference
+(EXISTING queued) → rouse-voice-selftest (needs real detectors + models, build LAST).
+
+** CRITICAL CORRECTION for the earshot fleet (all 4 earshot-* PRDs queued): **
+earshot tunes a voice loop that does not yet detect anything. earshot-vad-patience
+literally tunes a "Silero VAD silence-hangover" (earshot.md:69-72) that is TODAY a
+NullVadDetector — it does not exist. DO NOT verify/ship earshot's VAD or
+gentle-reprompt PRDs as "working" until audio-inference ships real detectors;
+their human-gate ACs will silently pass against a loop that never fires. earshot's
+dialog-timing + tts-legibility PRDs are unaffected (pure config/synth path).
+
+Notes for /build: ort/onnxruntime already a fleet-wide dep (agorabus, cadence,
+atlas, ac-judge, ambient…) — inference runtime is proven, no new vendoring risk.
+Both rouse PRDs rust-extend wm-audio, single-target. selftest mirrors the
+agorabus doctor self-describing pattern shipped today.
+Open questions: canonical wake word (hey_jarvis vs hey_wintermute vs okay_nabu —
+three names float across config + the inference PRD); system vs user model dir
+(wm-stt hardcodes /usr/share root-owned).
