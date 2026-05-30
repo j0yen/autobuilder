@@ -4335,3 +4335,42 @@ Notes for /build:
 Open questions: should `rollout install`'s reverse unit-map be cached, or
   re-derived from the units each call? (Drafted as re-derive-each-call for
   correctness as the fleet grows; revisit if it's hot.)
+
+## 2026-05-30T04:33  /dream  vision-warden
+Drafted: PRD-warden-home.md, PRD-warden-policy.md, PRD-warden-deadman.md,
+  PRD-warden-self-review.md
+Vision: visions/warden.md (new — "the guardrail that was built but never armed")
+Seed: 2026-05-29 self-review runs 1/2 Pending line "bpolicy not loaded
+  ({"loaded":false}) — no enforcement; loading needs sudo + a user-owned
+  policy file", re-flagged verbatim every run. bpolicy is the 8th local tool
+  and the ONLY one with no home repo (ls ~/wintermute/bpolicy = none), no PRD,
+  no vision. Sibling to onramp: same built→consumed shape, the ENFORCEMENT
+  half (onramp = the observation half: memlog/agentns/provfs). Verified
+  disjoint — no warden PRD touches memlog-group/agentns-wrap/provfs-fallback;
+  no onramp PRD touches bpolicy.
+Order:
+  warden-home  (rust-cli → NEW repo ~/wintermute/bpolicy; reimplements the
+    Python control plane in Rust, byte-identical status JSON + same 6
+    subcommands; vendors bpolicy.bpf.c/.o; back-compat anchor)
+   ├─► warden-policy  (rust-extend; declarative ~/.config/bpolicy/policy.toml
+   │     + BPF allowlist map + longest-prefix match in bpolicy.bpf.c)
+   ├─► warden-deadman (rust-extend; --audit log-only mode + --ttl/renew
+   │     deadman auto-unload so a too-tight arm self-heals)
+   └─► warden-self-review (shell; Phase A `warden:` line + B.5 escalate-once
+         playbook so self-review stops re-flagging {loaded:false} every run)
+Notes for /build:
+  - warden-home is the unblock; policy + deadman both rust-extend the SAME
+    build_into (~/wintermute/bpolicy) — SERIALIZE them, never parallel (dirty
+    tree + conflicting bpolicy.bpf.c edits). Order between them is free.
+  - warden-self-review is shell, edits self-review SKILL.md (Phase A + B.5).
+    SERIALIZE on SKILL.md with any other in-flight self-review-playbook PRD
+    (same coordination the vigil gossip flagged for the agorabus block).
+  - NONE of these arm enforcement. Every PRD is observe/build/make-safe only;
+    actually loading + enforcing on a live session stays a user decision.
+  - AC5 (BPF compile via clang/bpftool) is deferred-gated if the build env
+    lacks clang/bpftool — declare deferred_acs with reason, same as
+    agentns-claude's boot-gated ACs.
+  - Keep the binary named `bpolicy` (don't rename to warden) — it's in
+    CLAUDE_SELF.md + toolkit memory + drift skill; warden is the VISION name.
+Open questions: rename bpolicy→warden? (leaning no); should --ttl default-on
+  (drafted yes, 30m); allow-list one-map-reloaded vs N-maps (leaning one).
