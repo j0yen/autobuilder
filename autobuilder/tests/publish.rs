@@ -186,6 +186,10 @@ fn run_publish(env: &Env, extra: &[&str]) -> std::process::Output {
         .args(&args)
         .env("PATH", path_var)
         .env("WINTERMUTE_HOME", &env.wintermute_home)
+        // Hermetic: the default-owner assertions must not see an ambient
+        // AUTOBUILDER_GH_OWNER from the developer's shell. Tests that exercise a
+        // custom owner pass `--owner` explicitly instead.
+        .env_remove("AUTOBUILDER_GH_OWNER")
         .output()
         .unwrap()
 }
@@ -443,8 +447,45 @@ fn ac9_receipt_written_and_conforms() {
 }
 
 // ---------------------------------------------------------------------------
+// --owner — overrides the default owner in the stamped repo URL / README /
+//           REPOS.md. Default (no flag, no env) stays `j0yen`; covered by AC8/AC9.
+// ---------------------------------------------------------------------------
+#[test]
+fn owner_flag_overrides_default_in_url_readme_and_repos_md() {
+    let env = make_env("owner-slug", true, 0, "wm-publish: created\n");
+    let out = run_publish(
+        &env,
+        &["--license-year", "2026", "--owner", "joeyen-atscale"],
+    );
+    assert!(out.status.success(), "publish failed: {}", String::from_utf8_lossy(&out.stderr));
+
+    // receipt repo_url carries the custom owner
+    let receipt = fs::read_to_string(
+        env.project.join("target/autobuilder/receipts/publish-receipt.json"),
+    )
+    .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&receipt).unwrap();
+    assert_eq!(v["repo_url"], "https://github.com/joeyen-atscale/owner-slug");
+
+    // README install line carries the custom owner, never the j0yen default
+    let readme = fs::read_to_string(env.project.join("README.md")).unwrap();
+    assert!(
+        readme.contains("https://github.com/joeyen-atscale/owner-slug"),
+        "README missing custom owner:\n{readme}"
+    );
+    assert!(!readme.contains("j0yen"), "README leaked default owner:\n{readme}");
+
+    // REPOS.md row carries the custom owner
+    let repos = fs::read_to_string(env.wintermute_home.join("REPOS.md")).unwrap();
+    assert!(
+        repos.contains("github.com/joeyen-atscale/owner-slug)"),
+        "REPOS.md missing custom owner:\n{repos}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // AC10 — DEFERRED (live/network). A real end-to-end publish creates the
-//         public j0yen/<slug> repo and pushes main. Cannot run hermetically.
+//         public <owner>/<slug> repo and pushes main. Cannot run hermetically.
 // ---------------------------------------------------------------------------
 #[test]
 #[ignore = "AC10: live-network — requires real gh auth + a genuinely new slug; verified once out-of-band"]

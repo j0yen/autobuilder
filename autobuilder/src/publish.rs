@@ -49,6 +49,13 @@ pub(crate) struct Args {
     #[arg(long)]
     pub slug: Option<String>,
 
+    /// GitHub owner (user or org) the slice is published under. Falls back to
+    /// `$AUTOBUILDER_GH_OWNER`, then the default `j0yen`. The actual remote is
+    /// still created by the `wm-publish`/`wm-push` wrappers; this controls the
+    /// owner stamped into repo URLs, the README install line, and `REPOS.md`.
+    #[arg(long)]
+    pub owner: Option<String>,
+
     /// Repository visibility.
     #[arg(long, value_enum, default_value_t = Visibility::Public)]
     pub visibility: Visibility,
@@ -133,11 +140,12 @@ pub(crate) fn run(args: Args) -> Result<()> {
 
     let license_year = resolve_license_year(args.license_year.as_deref())?;
 
-    let repo_url = format!("https://github.com/j0yen/{slug}");
+    let owner = resolve_owner(args.owner.as_deref());
+    let repo_url = format!("https://github.com/{owner}/{slug}");
 
     // --- dry-run: print the plan, make zero writes / zero network ----------
     if args.dry_run {
-        println!("publish (dry-run): slug={slug} visibility={:?}", args.visibility);
+        println!("publish (dry-run): slug={slug} owner={owner} repo={repo_url} visibility={:?}", args.visibility);
         println!("plan:");
         println!("  1. README.md + LICENSE-MIT + LICENSE-APACHE (year {license_year}, holder \"Joe Yen\")");
         println!("  2. branch normalize: autobuilder/{slug} -> main (delete stale main)");
@@ -160,7 +168,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
 
     let readme_generated = args.force || !readme_path.exists();
     if readme_generated {
-        fs::write(&readme_path, render_readme(&slug, &root_motivation, &must_acs))
+        fs::write(&readme_path, render_readme(&owner, &slug, &root_motivation, &must_acs))
             .with_context(|| format!("failed to write {}", readme_path.display()))?;
     }
     let license_generated = args.force || !mit_path.exists() || !apache_path.exists();
@@ -183,7 +191,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
     wm_push(&project, &slug)?;
 
     // --- Step 6: REPOS.md --------------------------------------------------
-    let repos_md_updated = ensure_repos_md_line(&slug, &root_motivation, &args.category)?;
+    let repos_md_updated = ensure_repos_md_line(&owner, &slug, &root_motivation, &args.category)?;
 
     // --- Step 7: Receipt ---------------------------------------------------
     let doc = ReceiptDoc {
@@ -255,7 +263,26 @@ fn resolve_license_year(explicit: Option<&str>) -> Result<String> {
     ))
 }
 
-fn render_readme(slug: &str, root_motivation: &str, must_acs: &[MustAc]) -> String {
+/// Resolve the publish owner: explicit `--owner`, else `$AUTOBUILDER_GH_OWNER`,
+/// else the historical default `j0yen`. Kept org-agnostic so the same binary
+/// can publish to a personal account or an org without a rebuild.
+fn resolve_owner(explicit: Option<&str>) -> String {
+    if let Some(o) = explicit {
+        let o = o.trim();
+        if !o.is_empty() {
+            return o.to_owned();
+        }
+    }
+    if let Ok(env_owner) = std::env::var("AUTOBUILDER_GH_OWNER") {
+        let env_owner = env_owner.trim().to_owned();
+        if !env_owner.is_empty() {
+            return env_owner;
+        }
+    }
+    "j0yen".to_owned()
+}
+
+fn render_readme(owner: &str, slug: &str, root_motivation: &str, must_acs: &[MustAc]) -> String {
     let mut s = String::new();
     s.push_str(&format!("# {slug}\n\n"));
     s.push_str(root_motivation);
@@ -269,7 +296,7 @@ fn render_readme(slug: &str, root_motivation: &str, must_acs: &[MustAc]) -> Stri
     }
     s.push_str("\n## Install\n\n");
     s.push_str(&format!(
-        "```sh\ncargo install --git https://github.com/j0yen/{slug}\n```\n",
+        "```sh\ncargo install --git https://github.com/{owner}/{slug}\n```\n",
     ));
     s.push_str("\n## License\n\n");
     s.push_str(
@@ -446,13 +473,13 @@ fn wm_push(project: &Path, slug: &str) -> Result<()> {
 /// Step 6 — ensure exactly one `REPOS.md` line for `slug` under `category`.
 /// Idempotent: appends if missing, leaves untouched if present. Returns
 /// `true` if a line was appended.
-fn ensure_repos_md_line(slug: &str, description: &str, category: &str) -> Result<bool> {
+fn ensure_repos_md_line(owner: &str, slug: &str, description: &str, category: &str) -> Result<bool> {
     let repos_md = resolve_repos_md()?;
     let text = fs::read_to_string(&repos_md)
         .with_context(|| format!("could not read REPOS.md at {}", repos_md.display()))?;
 
     // Idempotency check: a line already linking the slug's repo.
-    let needle = format!("https://github.com/j0yen/{slug})");
+    let needle = format!("https://github.com/{owner}/{slug})");
     let alt_needle = format!("[{slug}]");
     if text.lines().any(|l| l.contains(&needle) || l.contains(&alt_needle)) {
         return Ok(false);
@@ -464,7 +491,7 @@ fn ensure_repos_md_line(slug: &str, description: &str, category: &str) -> Result
         description.to_owned()
     };
     let line = format!(
-        "| [{slug}](https://github.com/j0yen/{slug}) | `{slug}` | {desc} [category: {category}] |\n"
+        "| [{slug}](https://github.com/{owner}/{slug}) | `{slug}` | {desc} [category: {category}] |\n"
     );
     let mut new_text = text;
     if !new_text.ends_with('\n') {
