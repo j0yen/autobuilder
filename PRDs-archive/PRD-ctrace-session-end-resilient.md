@@ -1,8 +1,31 @@
 # PRD: ctrace-session-end-resilient — summaries that survive ungraceful exit
 
-Status: Draft v0.1
+Status: Closed (2026-06-02) — outcome achieved live by a different mechanism
 build_target: shell
 Vision: visions/scribe.md
+
+## Closing note (2026-06-02)
+
+Closed during a leaked-tracer diagnosis session. The PRD's core outcome —
+heavy session logs getting summarized and tracers not stranding despite a
+SIGKILLed headless session — is now delivered **live** by two changes,
+without swapping the proposed hooks into place:
+
+- `ctrace/session.bt` now self-terminates when its traced root PID exits
+  (commit in j0yen/wintermute), so tracers no longer orphan on ungraceful
+  exit in the first place.
+- `ctrace-reap.timer` (new systemd user timer) runs `ctrace-orphan-reap
+  --apply` every 2 min; its `render_log` step summarizes any orphaned
+  `*.ndjson` — the practical equivalent of AC1's backfill, at ≤2 min
+  latency vs the PRD's ≤1-session-boundary. The reaper was also fixed to
+  `sudo`-kill root-owned tracers (it previously EPERM'd silently).
+
+Not done, intentionally: the SessionStart-sweep / SessionEnd-hardening
+drafts (`proposals/ctrace-session-{start-backfill,end}.draft.sh`, AC7) were
+never swapped into the live hook path. They remain in proposals/ as an
+alternative session-boundary approach if the timer cadence proves
+insufficient. ACs 3–6 (live-hook behavior) are therefore not met by this
+close; they are superseded rather than satisfied.
 
 ## TL;DR
 
