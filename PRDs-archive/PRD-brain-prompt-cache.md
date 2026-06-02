@@ -4,9 +4,9 @@
 **Status:** Draft v0.1
 **Date:** 2026-05-29
 **Vision:** visions/thrift.md
-**build_target:** rust-extend
-**build_into:** /home/jsy/wintermute/wintermute-brain
-**build_version_bump:** minor
+build_target: rust-extend
+build_into: /home/jsy/wintermute/wintermute-brain
+build_version_bump: minor
 **Depends on:** (none — independent, ship first)
 **Codename:** *ledger* — stop re-billing what hasn't changed.
 
