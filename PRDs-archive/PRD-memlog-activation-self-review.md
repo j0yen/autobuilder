@@ -122,3 +122,7 @@ shell only:
 - Partially realizes the onramp Fleet-2 `onramp-doctor` bullet, narrowed to
   the memlog axis. A future `onramp-doctor` PRD can fold agentns + provfs
   checks into the same Phase A surface.
+
+---
+Verified-completed: 2026-06-02
+Completed-by: /build tick — shell edit, smoke-tested
