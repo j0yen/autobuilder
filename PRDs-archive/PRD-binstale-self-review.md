@@ -1,6 +1,6 @@
 # PRD: binstale-self-review — wire fleet staleness into the daily review
 
-Status: Draft v0.1
+Status: done
 build_target: shell
 build_into: /home/jsy/.claude/skills/self-review/SKILL.md
 Vision: visions/vigil.md
