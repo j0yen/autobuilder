@@ -9,6 +9,8 @@
 **build_version_bump:** minor
 **Depends on:** PRD-wintermute-dialog-turn-fsm, PRD-wintermute-companion-degrade
 **Codename:** *kiosk* — turn a developer's laptop into a device that boots into wintermute and stays there.
+**deferred_acs:** [2, 3]
+**deferred_ac_reasons:** {"2": "requires freshly-installed Arch box + stopwatch + live fleet — validated manually per install.sh --kiosk dry-run path; structural coverage in kiosk_plan_is_non_interactive + kiosk_plan_has_seven_canonical_steps", "3": "requires physical power-cycle + reboot-ff; covered structurally by recovery_service_unit_targets_correct_user_and_target and recovery_service_path_is_system_level tests"}
 
 ## TL;DR
 
