@@ -1,11 +1,13 @@
 # PRD: rouse-voice-selftest — the fleet answers "am I actually hearing?"
 
-Status: Draft v0.1
+Status: landed v0.6.0
 build_target: rust-extend
 build_into: /home/jsy/wintermute/wintermute-audio
 Vision: visions/rouse.md
 Depends on: PRD-wintermute-audio-inference (real detectors to assert against),
   PRD-rouse-wake-vad-models (models on disk)
+deferred_acs: [7]
+deferred_ac_reasons: {"7": "live-mode smoke requires a human to speak the wake word in the deployed fleet — hardware-gated, not automatable in CI"}
 Codename: *audiometry* — a hearing test for the machine.
 
 ## TL;DR
