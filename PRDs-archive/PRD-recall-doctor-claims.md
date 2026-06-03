@@ -7,6 +7,7 @@
 build_auto: false
 build_target: rust-extend
 build_into: /home/jsy/wintermute/recall
+deferred_acs: [5, 10]
 **Version target:** `recall v0.7.0` (minor — adds `--check-claims` mode
 to `doctor`; non-breaking; old `recall doctor` invocations unchanged).
 **Coordinated with:** `recall-daemon` (v0.5.0 in-flight),
