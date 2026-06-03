@@ -4878,3 +4878,31 @@ SIGNAL (12th tick running, unchanged): external-service MCP surface live this
 Notes for /build: nothing new queued. Actionable backlog unchanged — vigil F4
   (install/build restart wiring + selfreview-concurrent-guard), warden fleet,
   onramp F2a (memlog consumer spine). No phantom PRDs added.
+
+## 2026-06-02T (user-invoked, interactive)  PRD drafted — wintermute-wake-word
+Seed: user said "Create a new wakeword -- wintermute". NOT a saturation tick — a
+  direct request, so a PRD was drafted: PRD-wintermute-wake-word.md (rust-extend
+  into wintermute-audio).
+KEY FINDING for /build (verified live this session, not speculation): the wake
+  path has NEVER fired for ANY word. Three confirmed causes:
+  (1) no wake .onnx installed anywhere (only TTS lessac on disk) -> load_or_null_wake
+      falls back to NullWakeDetector;
+  (2) models.rs MANIFEST URLs all 404 — repo moved kahrendt/microWakeWord ->
+      OHF-Voice/micro-wake-word; some sha256 look like placeholders;
+  (3) FORMAT MISMATCH: upstream ships .tflite (verified via GH releases API:
+      v2.1_models/hey_jarvis.tflite etc.), zero .onnx assets — but inference.rs
+      uses ort(ONNX) and feeds RAW PCM [1,1280]->scalar, whereas micro-wake-word
+      consumes MFCC feature frames from a separate preprocessor.
+So "wintermute" is NOT additive: base must be fixed first (correct URLs/format,
+  tflite->onnx, MFCC front-end). Fixing it also makes hey-jarvis work for the
+  first time. This overlaps/corrects rouse-wake-vad-models (whose Non-goal #2
+  excludes custom training) and wintermute-audio-inference.
+Hard part = training a custom model (no pretrained "wintermute" exists): piper
+  synth + augment + micro-wake-word recipe + tflite->onnx export. TF/torch NOT
+  installed. Harness ships as contrib/train-wintermute.sh with a --smoke AC to
+  de-risk before a full CPU train run.
+Status: queued in PRD dir; /build will discover via PRD-*.md scan.
+
+- [2026-06-03T20:09:40Z] Pending: daemon `recalld.service` installed binary `/home/jsy/.local/bin/recalld` but NOT restarted — `rollout install` unavailable (install-m755-fallback)
+
+- 2026-06-03 (build): **reflect candidate (cap spent today)** — `wm-buildtree land` is `--ff-only`, so when a shared-target repo's default branch advances past a `build/<slug>` branch, land is *permanently* stuck and logs `land-deferred-main-dirty` every tick (recall-corpus-vacuum sat 4 ticks this way; main was 20 commits ahead). Recovery is manual: merge main into the branch in its worktree, resolve conflicts, then ff. Worth a PRD: `wm-buildtree land` should detect divergence and fall back to merge-main-then-ff (or the shared-target `worktree-extend integrate` path) instead of dead-ending on ff-only. recall uses build/* (wm-buildtree) AND has 3 stale 0-ahead build worktrees (stop-hook-discriminate, temporal-decay) — those should be pruned by land/cleanup.
