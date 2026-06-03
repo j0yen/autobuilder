@@ -7,6 +7,8 @@
 **build_target:** shell
 **Depends on:** none (serialize on SKILL.md with PRD-agorabus-reload-self-review — same playbook block)
 **Codename:** *yield-to-build* — two hands on the same daemon is one too many.
+**deferred_acs:** [7]
+**deferred_ac_reasons:** {"7": "[user-verify] requires a live agorabus daemon in a stale-binary condition plus a running/simulated /build tick; explicitly marked [user-verify] in AC7"}
 
 ## TL;DR
 
