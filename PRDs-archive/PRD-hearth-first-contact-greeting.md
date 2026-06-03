@@ -8,6 +8,7 @@
 **build_into:** /home/jsy/wintermute/wintermute-brain
 **build_version_bump:** minor
 **Depends on:** PRD-hearth-persona-config
+**deferred_acs:** [7]
 **Codename:** *threshold* — what she says when someone crosses it the first time.
 
 ## TL;DR
