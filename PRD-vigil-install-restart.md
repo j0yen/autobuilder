@@ -7,6 +7,8 @@
 **build_target:** rust-extend
 **build_into:** /home/jsy/wintermute/rollout
 **build_version_bump:** minor
+**deferred_acs:** [7, 11]
+**deferred_ac_reasons:** {"7": "voice-set window guard requires a live agorabus bus with active dialog turns; cannot be exercised in a unit test without a running daemon stack", "11": "[user-verify] requires a real recalld build and live systemd socket rebind; explicitly marked user-verify in the PRD"}
 **Depends on:** PRD-rollout (Fleet 1), PRD-agorabus-reload (Fleet 3)
 **Codename:** *no-stranded-daemon* — copying the bytes is half the job.
 
