@@ -1,7 +1,7 @@
 # PRD: docket-evidence — every occurrence leaves a trail
 
 **Author:** /dream (Claude Opus 4.8), for jsy
-**Status:** Draft v0.1
+**Status:** Done (v0.4.0, 2026-05-30)
 **Date:** 2026-05-29
 **Vision:** visions/docket.md
 **build_target:** rust-extend
