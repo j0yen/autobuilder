@@ -4906,3 +4906,41 @@ Status: queued in PRD dir; /build will discover via PRD-*.md scan.
 - [2026-06-03T20:09:40Z] Pending: daemon `recalld.service` installed binary `/home/jsy/.local/bin/recalld` but NOT restarted — `rollout install` unavailable (install-m755-fallback)
 
 - 2026-06-03 (build): **reflect candidate (cap spent today)** — `wm-buildtree land` is `--ff-only`, so when a shared-target repo's default branch advances past a `build/<slug>` branch, land is *permanently* stuck and logs `land-deferred-main-dirty` every tick (recall-corpus-vacuum sat 4 ticks this way; main was 20 commits ahead). Recovery is manual: merge main into the branch in its worktree, resolve conflicts, then ff. Worth a PRD: `wm-buildtree land` should detect divergence and fall back to merge-main-then-ff (or the shared-target `worktree-extend integrate` path) instead of dead-ending on ff-only. recall uses build/* (wm-buildtree) AND has 3 stale 0-ahead build worktrees (stop-hook-discriminate, temporal-decay) — those should be pruned by land/cleanup.
+
+- [2026-06-04T03:02:42Z] Pending: daemon `agorabus.service` installed binary `/home/jsy/.local/bin/agorabus` but NOT restarted — `rollout install` unavailable (install-m755-fallback)
+
+## 2026-06-04T  /dream  vision-lucid
+Seed: jsy (interactive, mid voice-bringup session) — "a way for wintermute to
+  share their thoughts and inner mechanics so I can understand and debug."
+Drafted: PRD-lucid-turn-id.md, PRD-lucid-tap.md, PRD-lucid-trace.md,
+  PRD-lucid-mind.md, PRD-lucid-live.md, PRD-lucid-explain.md
+Vision: visions/lucid.md
+Order: turn-id → tap → {trace, mind, live} → explain
+  (trace/mind/live each consume tap independently; explain composes trace+mind)
+Why now (grounded in THIS session, not speculation): bringing up the voice loop
+  cost a full session of debugging blind. The bus already carries ~120 wm.*
+  topics incl. wm.brain.route {turn_id,tier,reason,latency_ms,model} — the
+  brain's DECISION is already published — but nothing records/correlates/explains
+  it. turn_id today exists ONLY inside wm-brain (minted as now_ms, daemon.rs
+  2050/2119/2176), never threaded from wake → no cross-daemon correlation. The
+  wake-never-fired bug was a 1-line tensor bug misdiagnosed as overfitting
+  through 3 retrains + 120 recordings because the wake SCORE was computed but
+  never surfaced. lucid fixes the legibility gap.
+Notes for /build:
+  - PRD-lucid-turn-id is build_target=mixed (rust-extend across all 5 voice
+    repos); ship mint-first (wm-audio) then downstream — half-applied degrades
+    gracefully (turn_id is additive/optional everywhere). It is the spine;
+    tap/trace/mind/live read more easily once it lands but tap can record
+    untagged turns before it.
+  - PRD-lucid-tap creates a NEW repo ~/wintermute/wintermute-lucid (rust-cli,
+    new wm-lucid daemon + systemd unit). The other four are rust-extend
+    build_into that same repo — so tap MUST ship before trace/mind/live/explain.
+  - PRD-lucid-mind adds a SMALL publish-side change to wm-brain (a bounded
+    wm.brain.context digest event); the rest is read-only over the recorded log.
+  - PRD-lucid-explain is deterministic/templated — explicitly NOT an LLM call
+    (AC7: must not consume a brain turn). It reuses wm.tts.say for --voice.
+Open questions: wm-lucid as new repo (assumed yes) vs subcommand on existing
+  tool; should records stamp the provfs/agentns session id (deferred to a
+  future lucid-extend); explain persona = hearth (elder) vs flat (jsy).
+Cross-links: distinct from earshot (tempo) and scribe (journaling); explain's
+  elder-facing voice borrows hearth's persona.
