@@ -1,6 +1,10 @@
 # PRD: memlog-precompact-witness — give /dev/memlog a producer and a reader
 
-Status: Draft v0.1
+Status: in_progress
+deferred_acs: [6]
+# AC6 (live-group survival smoke) is deferred: the memlog group is not yet
+# joined on this box, so /dev/memlog is unwritable. ACs 1-5,7 are built and
+# proven; the write mechanism is verified against a writable stub device.
 build_target: mixed
 build_into: /home/jsy
 Vision: visions/onramp.md
