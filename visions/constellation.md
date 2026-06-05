@@ -24,25 +24,27 @@ are slow, and there is nowhere to offload. constellation turns one laptop into a
 control live on boot — and **connected** so the wintermute agents on each see each
 other, share one coordination bus, and **route work to where it belongs**.
 
-**The fleet (pinned 2026-06-04 after the hardware was identified machine by
-machine):**
+**The fleet (scoped 2026-06-04 by jsy's decisions: cloud-first brain; the AMD
+5700U is REMOVED — it's jsy's work machine; the GTX 1080 tower is DEFERRED — not
+immediately needed). Near-term fleet = laptop + cloud:**
 
-| Machine | Spec | Role |
-|---|---|---|
-| **Laptop** | i7-10610U (4c/8t), 15GB, Intel iGPU, no dGPU | **Voice node** (thin client; brain served remotely) |
-| **5700U box** | Ryzen 7 5700U (8c/16t Zen2), 32GB, Vega 8 APU, no dGPU | **Build / compute workhorse** — best CPU in the fleet for sccache-dist builds + CPU ML jobs |
-| **i7 tower + GTX 1080** | 5th-gen i7 (4c/8t), 32GB, **GTX 1080 8GB GDDR5X** | **Fast local brain** — 8B Q4 on the GPU at ~25-35 tok/s → ~2-3s/reply |
-| **Cloud** | Hetzner CAX21 / Oracle free | **Always-on hub** (NATS + mesh exit) + Anthropic API latency brain |
+| Machine | Spec | Role | Status |
+|---|---|---|---|
+| **Laptop** | i7-10610U (4c/8t), 15GB, Intel iGPU, no dGPU | **Voice node**; brain = cloud | ACTIVE |
+| **Cloud** | Hetzner CAX21 / Oracle free | **Always-on hub** (NATS + mesh exit) **+ the primary brain (Anthropic API, ~0.7s)** + build pods | ACTIVE |
+| ~~5700U box~~ | Ryzen 7 5700U, 32GB, Vega 8 APU | ~~build workhorse~~ — **REMOVED** (jsy's work machine) | DROPPED |
+| **i7 tower + GTX 1080** | 5th-gen i7, 32GB, GTX 1080 8GB | (future) local-gpu brain + fleet GPU for batch ML | **DEFERRED** |
 
-**The resource-allocation spine:** the GTX 1080 (8GB GDDR5X, ~320 GB/s — ~6× the
-APU's bandwidth) makes a *fast* local brain real for the first time: an 8B Q4 fits
-in 8GB VRAM and serves at ~25-35 tok/s (~2-3s/reply, sub-second TTFT), local and
-private. Because the **GPU** serves the model, the tower's CPU stays free. The
-5700U's eight Zen2 cores are the fleet's best *builder*, so heavy Rust/CI/ML jobs
-land there (cloud pods burst only for big fan-outs). The laptop is a thin voice
-node. The cloud is the always-on hub and the latency brain (Anthropic API, ~0.7s)
-for when the tower is asleep. No single machine does two heavy things at once:
-brain on the tower's GPU, builds on the 5700U's cores, voice on the laptop.
+**The resource-allocation spine (current):** the **brain is cloud-first** — the
+Anthropic API (Haiku/Sonnet, ~0.7s) is faster *and* smarter than any model these
+machines can host, and cheap at personal volume (~$3-11/mo); it is the primary
+voice brain. The **laptop** is a thin voice node. The **cloud node** is the
+always-on hub (NATS + mesh) and hosts the API brain + burst build pods. Heavy
+builds run on **cloud build pods** (the 5700U that would have been the local
+builder is gone). **Deferred for later:** when the GTX 1080 tower is picked up, it
+adds a `local-gpu` tier (8B Q4, ~2-3s) *below* cloud in the ladder — a
+private/offline brain + the fleet's free GPU for batch ML (homeward embeddings,
+training) — but it is NOT needed for the near-term fleet to work.
 
 ## Why now (Phase 1 research, 2026-06-04)
 
@@ -123,24 +125,21 @@ When constellation is fulfilled:
   node into one private network with stable names.
 - **constellation-bus** — the agorabus↔NATS bridge daemon + NATS hub/leaf config
   + JetStream, carrying `wm.*` fleet-wide while local UDS clients stay unchanged.
-- **constellation-brain-gpu** — *SUPERSEDED 2026-06-04 by constellation-brain-cuda*
-  (assumed a discrete Radeon; the GPU is an NVIDIA GTX 1080). Archive.
-- **constellation-brain-local** — *DEMOTED 2026-06-04 to optional secondary*
-  (qwen2.5-8B on the 5700U at ~8-10 tok/s). With the 1080 tower now the fast brain
-  and the 5700U repurposed as the builder, this is at most an offline/privacy
-  fallback on the 5700U when idle — not the primary local brain. Keep as optional.
-- **constellation-brain-cuda** *(supersedes brain-gpu; the real fast local brain)*
-  — nvidia-dkms on `linux-wintermute` + llama.cpp/ollama CUDA on the GTX 1080 tower
-  serving 8B Q4 as the `local-gpu` tier at ~2-3s/reply; the GPU serves the model so
-  the CPU stays free.
+- **constellation-brain-gpu** — *SUPERSEDED* (assumed a discrete Radeon). Archive.
+- **constellation-brain-local** — *ABANDONED 2026-06-04* — it ran qwen2.5-8B on the
+  5700U, which has been removed from the fleet. Do not build. Archive.
+- **constellation-brain-cuda** — *DEFERRED 2026-06-04* (the tower is not immediately
+  needed). When picked up: nvidia-dkms on `linux-wintermute` + llama.cpp/ollama CUDA
+  on the GTX 1080 serving 8B Q4 as a `local-gpu` tier **below cloud** (cloud-first);
+  a private/offline brain + the fleet's batch-ML GPU. Kept drafted for later.
 - **constellation-cloud** — the always-on cheap cloud node: NATS hub + mesh exit
-  + offline-fallback brain, provisioned by the same Ansible.
-- **constellation-cloud-build** *(refines dispatch)* — cloud sccache-dist + burst
-  pods for big fan-outs; primary build worker is now the **5700U** (8 cores), with
-  cloud bursting only when the queue/job size warrants. Builds route to the 5700U /
-  cloud, never to the tower while it serves the brain.
+  + **the primary Anthropic-API brain** + burst build pods, provisioned by Ansible.
+  *(Near-term this is the most valuable node — it's the brain + hub.)*
+- **constellation-cloud-build** *(refines dispatch)* — **builds run on cloud pods**
+  (sccache-dist + burst); the local-builder role is gone with the 5700U. Builds
+  route to cloud (and the laptop when voice-idle), never to the tower.
 - **constellation-dispatch** — JetStream work-queue + capability KV registry +
-  sccache-dist distributed builds to maximize throughput across nodes.
+  sccache-dist distributed builds; near-term this spans laptop + cloud only.
 
 ## Order
 

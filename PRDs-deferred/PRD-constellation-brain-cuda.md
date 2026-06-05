@@ -1,6 +1,8 @@
 # PRD: constellation-brain-cuda — the GTX 1080 tower is the fast local brain
 
-Status: Draft v0.1
+Status: Deferred v0.1 (2026-06-04 — jsy: "deferring work on the tower; it's not
+  immediately needed." Kept drafted for when the tower is picked up. Do NOT build
+  yet. When built, this is the `local-gpu` tier placed BELOW cloud — cloud-first.)
 build_target: mixed
 build_into: /home/jsy/wintermute/wintermute-brain
 Vision: visions/constellation.md
