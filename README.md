@@ -3,20 +3,7 @@
 PRD-driven, rigorously validated Rust code generation. A Claude Code skill plus
 a companion Rust binary that turn a Product Requirements Document into a
 working Rust project through an autonomous *iterate-and-prove* loop guarded by
-a 25-receipt release gate.
-
-`autobuilder` is the synthesis of three opinionated takes on "how do you trust
-agent-authored software":
-
-| Source                         | Idea lifted                                                  |
-| ------------------------------ | ------------------------------------------------------------ |
-| `miolini/autoresearch-macos`   | locked harness + a single *unfakeable* scalar metric         |
-| `neverhuman/jankurai`          | repository-local evidence receipts and an anti-pattern catalog |
-| `neverhuman/jeryu`             | N-of-N signed proof receipts on a risk gate                  |
-
-The full design is in [`PLAN.md`](./PLAN.md). The first PRD the skill dogfooded
-against itself — the *MCP Metadata Optimization Harness* — is in
-[`PRD-mcp-metadata-tuner.md`](./PRD-mcp-metadata-tuner.md).
+a 7-receipt release gate.
 
 ## Install
 
