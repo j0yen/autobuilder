@@ -4995,3 +4995,62 @@ Open questions (left for /dream extend homeward, NOT drafted — honest per rule
   federation (AAHA gated, missing AVID) needs partnerships not scraping; commercial-
   vs-nonprofit licensing choice gates which ML weights are legal to ship.
 Cross-links: structurally mirrors ~/wintermute/recall (embedder + vector index).
+
+## 2026-06-04T  /dream  vision-constellation  (fleet: grow beyond this laptop)
+Seed: jsy (interactive) — "expand across multiple computers. This laptop is too
+  resource constrained... 32GB AMD desktop w/ medium Radeon... install wintermute
+  linux on this and other computers + communicate across all... voice control on
+  boot... identical appearance (i3, terminal shapes, all taskbar tools)... coordinate,
+  collaborate, distribute workloads to maximize dev throughput... cloud service...
+  /dream of growing beyond this laptop."
+Drafted: PRD-constellation-{provision,appearance,mesh,bus,brain-gpu,cloud,dispatch}.md (7)
+Vision: visions/constellation.md
+Order: provision -> appearance ; provision -> mesh -> bus -> {cloud, brain-gpu, dispatch}
+Grounded in DEEP external research (4 parallel agents, 2026-06-04 — full findings +
+  citations in PRD "Why" sections). Load-bearing decisions for /build:
+  - PROVISION: stay Arch, drive w/ ANSIBLE (NOT NixOS — custom linux-wintermute
+    kernel PKGBUILD fights Nix w/ compile-on-rebuild; multi-month migration). Local
+    pacman repo for the kernel (build once, install everywhere). Golden archiso for
+    day-0. chezmoi for dotfiles (ONLY manager that templates per-host = "identical
+    but different GPU/monitor"). Boot-to-voice = greetd initial_session autologin ->
+    i3 -> wintermute.target, w/ the i3->graphical-session.target bridge FIX (i3 #5186
+    — naive WantedBy=graphical-session.target silently never starts).
+  - MESH+BUS: Tailscale (MagicDNS, NAT traversal) + NATS hub(cloud)/leaf(each node)
+    + JetStream. CRITICAL CORRECTION: NATS has NO unix-socket listener, so agorabus
+    CANNOT be a leaf over its UDS -> need a BRIDGE sidecar (new repo
+    ~/wintermute/agorabus-nats-bridge, wm-busbridge daemon, UDS<->NATS, wm.* identity
+    map, loop-guard, SELECTIVE forwarding so PCM chunks/local topics DON'T cross).
+    2nd footgun: JetStream blocked across leaf boundary by default -> set JS DOMAINS
+    (hub + per-leaf) + domain-qualified $JS.hub.API.> prefix. ALL leaf/hub URLs =
+    MagicDNS names never IPs.
+  - BRAIN-GPU: llama.cpp VULKAN (NOT ROCm — more reliable on consumer Radeon AND
+    faster token-gen which is what voice needs; ROCm only wins long-context pp).
+    Qwen2.5-7B/Qwen3-8B Q4_K_M -> ~35-50 tok/s, sub-2s TTFT, turn ~25s->~2-4s. New
+    `local-gpu` tier in wintermute-brain ladder (between local-3b and cloud), graceful
+    skip if desktop off. DETECT the GPU (vulkaninfo/lspci) — exact Radeon model unknown
+    (RDNA2 gfx1030 needs HSA_OVERRIDE; RDNA3 mostly just works; Vulkan avoids ROCm).
+  - CLOUD: cheap always-on coordinator = Hetzner CAX21 ~€8/mo (Oracle free A1 = hot
+    spare; idle-reclaim risk). Hosts NATS hub + mesh exit + small offline-fallback
+    brain. DO NOT self-host the latency brain — Anthropic API ~$3-11/mo BEATS any
+    rentable GPU 20-40x at personal volume (break-even ~15-20M tok/DAY). GPU pods
+    (RunPod 4090 $0.69/hr, A40 48GB $0.44/hr) BURST-ONLY for build/ML jobs. Fly.io
+    GPUs retired Aug 2026 — excluded.
+  - DISPATCH: JetStream WM_WORK work-queue + per-node PULL consumers (demand-pull =
+    capacity balance across uneven hw) + WM_NODES KV capability registry (heartbeat
+    TTL, NOT gossip at 3-5 nodes) + sccache/sccache-dist for distributed Rust builds
+    (compose w/ the queue, don't replace). Job payloads small (refs not blobs);
+    artifacts move via shared storage/rsync over mesh NOT the bus.
+Notes for /build:
+  - constellation-bus is the KEYSTONE (new repo agorabus-nats-bridge); brain-gpu/cloud/
+    dispatch all depend on it. provision creates ~/wintermute/constellation/ (ansible+
+    archiso+chezmoi+boot). brain-gpu is rust-extend into wintermute-brain (+ systemd
+    config on desktop). dispatch is rust-extend into the bridge repo.
+  - Per-host ROLE flags matter: voice_node (laptop=yes, desktop/cloud=optional/no);
+    gpu (amd|intel) drives driver + the Vulkan stack install.
+Open questions (vision doc): bit-for-bit vs convergent-identical (only NixOS gives
+  literal bit-identity — flips recommendation if hard requirement); Tailscale vs
+  self-hosted Headscale (sovereignty); secrets bootstrapping channel (one root secret
+  out-of-band per host); voice-on-every-node policy.
+Cross-links: distinct from kin/homestead (elder COMPANION device) — constellation is
+  jsy's own DEV fleet. Reuses wintermute-brain ladder, agorabus, linux-wintermute
+  kernel, ~/wintermute/dotfiles + wintermute-desktop.
