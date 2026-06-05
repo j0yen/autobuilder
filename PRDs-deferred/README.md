@@ -5,3 +5,4 @@ They remain drafted but are NOT auto-built until moved back to the top level.
 
 - **PRD-constellation-brain-cuda.md** — GTX 1080 tower local brain. DEFERRED 2026-06-04 (jsy: tower not immediately needed; brain is cloud-first).
 - **PRD-constellation-brain-gpu.md** — SUPERSEDED (assumed a discrete Radeon; GPU is an NVIDIA GTX 1080 → brain-cuda).
+- **PRD-constellation-provision.md** — Arch+Ansible+chezmoi+ISO+boot-to-voice. PAUSED 2026-06-04 (jsy: pause until ready). Was status:in_progress in /build manifest (no live worktree); deferred until jsy resumes it.
