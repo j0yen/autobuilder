@@ -5088,3 +5088,38 @@ Notes for /build: constellation fleet now 8 active PRDs (provision, appearance,
   refines dispatch. The 5700U advertises no_build:true so builds never contend with
   the model. Local box = model node; cloud = hub + build workhorse; laptop = voice
   node (+ idle-time builder); Anthropic API = latency brain.
+
+## 2026-06-05 (build tick) — Pending observations
+- **extend-handler.sh read_cargo_version is fragile on workspace Cargo.toml**: when build_into is a cargo *workspace* root with no `[package].version`, `extend-handler.sh validate` / version-bump awk fails. homeward-match hit this; worked around by committing a `[package]` stub to homeward's workspace Cargo.toml. Reflect candidate: teach read_cargo_version to fall back to the workspace's first member or a `[workspace.package].version`.
+- **homeward is built but unpublished (no git remote)**: homeward-schema/connectors/report/ingest are all integrated to local main (now v0.4.0) but homeward has no j0yen origin, so rust-extend PRDs can never pass the verified-completed gate (commit reachable from origin/main). Decision needed: publish homeward as j0yen/homeward (it's the first outward-facing pet-finder DB — confirm public-repo intent with user first) OR keep local. Until then homeward-* PRDs park at integrated-local-unpublished.
+- **constellation repo now exists** (created this tick by mesh+provision scaffold); **agorabus-nats-bridge now exists** (created by constellation-bus /autobuilder). Their dependents (constellation-appearance/cloud into constellation, constellation-dispatch into agorabus-nats-bridge) are now unblocked for next tick — they were queued this tick.
+
+## 2026-06-04T  /dream  vision-constellation  (FLEET = 3 machines; GTX 1080 = fast brain)
+Seed: jsy clarified hardware — there are TWO separate desktops + the laptop + cloud:
+  (1) LAPTOP i7-10610U 4c/8t 15GB Intel-iGPU no-dGPU [measured qwen3:8b = 4.34 tok/s];
+  (2) 5700U box 8c/16t Zen2 32GB Vega8-APU no-dGPU (~8-10 tok/s on 8B);
+  (3) full-size 5th-gen i7 TOWER 32GB that takes a **GTX 1080 8GB GDDR5X ~320GB/s**.
+ROLE REASSIGNMENT (the 1080 changes everything — fast LOCAL brain is now real):
+  - i7 TOWER + GTX 1080 = the FAST LOCAL BRAIN. 8B Q4 fits 8GB VRAM, ~25-35 tok/s
+    (~6x the APU bandwidth) -> ~2-3s/reply, sub-1s TTFT. GPU serves model -> CPU free.
+  - 5700U box (8 Zen2 cores) = the BUILD/COMPUTE WORKHORSE (best CPU in fleet for
+    sccache-dist + CPU ML jobs). NO LONGER the local-LLM node.
+  - Laptop = thin VOICE node (brain served by tower or cloud; do NOT run 8B here,
+    4.34 tok/s measured).
+  - Cloud = always-on hub + Anthropic API latency brain (when tower asleep).
+PRD CHANGES:
+  - NEW PRD-constellation-brain-cuda.md (supersedes brain-gpu): nvidia-dkms on
+    linux-wintermute + llama.cpp/ollama CUDA on the GTX 1080 tower, 8B Q4, `local-gpu`
+    tier at ~2-3s. CUDA path (Pascal sm_61, no tensor cores, weak FP16 but llama.cpp
+    Q4 handles Pascal fine; NOT Vulkan/ROCm). 8GB caps at 7-8B (14B won't fit).
+  - PRD-constellation-brain-gpu.md = SUPERSEDED/archive (assumed Radeon).
+  - PRD-constellation-brain-local.md (5700U qwen2.5-8B) = DEMOTED to optional
+    offline/privacy secondary; 5700U's real job is now BUILDER.
+  - constellation-cloud-build / dispatch: primary build worker is now the 5700U
+    (8 cores), cloud bursts only for big fan-outs; builds never go to the tower
+    while it serves the brain.
+Vision doc UPDATED (durable): 3-machine fleet role table, GTX 1080 resource spine,
+  components (brain-gpu superseded, +brain-cuda, brain-local demoted, build->5700U).
+Notes for /build: fleet now ~9 active PRDs. brain-cuda is the headline new capability
+  (fast local brain). Two physical confirmations still open: (a) tower PSU has a spare
+  8-pin PCIe + ~500W for the 1080; (b) nvidia-dkms builds clean against linux-wintermute.
