@@ -19,15 +19,24 @@ agents, 2026-06-04; citations throughout the fleet PRDs).
 wintermute today is one Intel laptop — 8 cores, 15GB RAM, an Intel iGPU with no
 discrete GPU — and it shows: the local brain takes 20-30s per voice turn, builds
 are slow, and there is nowhere to offload. constellation turns one laptop into a
-**fleet**: every machine (this laptop, a 32GB AMD+Radeon desktop, future
-machines, and an always-on cloud node) is provisioned to be **identical** — same
-i3, same terminal geometry, same taskbar, same tools, voice control live on boot
-— and **connected** so the wintermute agents on each can see each other, share
-one coordination bus, serve a fast GPU brain to the weak machines, and
-**distribute build/inference work to whoever has capacity**. The laptop stops
-being the bottleneck; the desktop's Radeon serves a ~2-4s brain instead of ~25s;
-the cloud node is the always-on hub; and development throughput becomes the sum of
-the fleet, not the floor of its weakest member.
+**fleet**: every machine (this laptop, a 32GB **Ryzen 7 5700U** desktop/APU,
+future machines, and an always-on cloud node) is provisioned to be **identical**
+— same i3, same terminal geometry, same taskbar, same tools, voice control live on
+boot — and **connected** so the wintermute agents on each can see each other,
+share one coordination bus, and **route work to where it belongs**.
+
+**The resource-allocation spine (corrected 2026-06-04 after the hardware was
+identified):** the "desktop" is a Ryzen 7 5700U — a Zen 2 APU with a Vega 8 iGPU,
+no discrete GPU, no dedicated VRAM, ~51 GB/s shared DDR4. It does ~8-10 tok/s on a
+7-8B model (CPU *or* iGPU — generation is bandwidth-bound, the iGPU doesn't help),
+not the 35-50 tok/s a discrete GPU would. It cannot be a "fast" brain, and it
+cannot run a heavy build *and* serve a model at once (not enough cores/RAM for
+both). So the fleet splits the load: **the local box is dedicated to a local LLM**
+(privacy/offline/cheap default tier + command routing), **heavy build/CI/ML jobs
+are pushed to the cloud** (burst CPU/GPU pods), and **the latency-critical voice
+brain stays the Anthropic API**. The laptop stops being the bottleneck; the
+desktop becomes a dedicated always-available local-model node; the cloud is both
+the always-on hub and the build workhorse; throughput becomes the fleet's sum.
 
 ## Why now (Phase 1 research, 2026-06-04)
 
@@ -54,12 +63,22 @@ the fleet, not the floor of its weakest member.
   `systemctl --user start wintermute.target`, with the documented i3→
   `graphical-session.target` bridge fix (i3 issue #5186). Matches the existing
   `wm-audio`/`wm-stt`/`agorabus.service` + `wintermute.target` daemon model.
-- **A Radeon brain is transformative and cheap to stand up.** Research: **llama.cpp
-  Vulkan** (not ROCm — more reliable on consumer Radeon *and* faster on token-
-  generation, which dominates short voice turns) serving Qwen2.5-7B/Qwen3-8B
-  Q4_K_M at ~35-50 tok/s, sub-2s TTFT — a ~10× win, dropping a turn from ~25s to
-  ~2-4s. Slots in as a new `local-gpu` tier between the laptop's local-3b and
-  cloud haiku in the existing brain ladder.
+- **The "desktop" is an APU, not a GPU box (corrected 2026-06-04).** It is a Ryzen
+  7 5700U (Zen 2 / Lucienne, Vega 8 iGPU, gfx90c, no discrete GPU, ~51 GB/s shared
+  DDR4). Research verdict: **llama.cpp Vulkan** runs on the Vega iGPU but token
+  generation is bandwidth-bound, so iGPU offload gives ~2× prompt-prefill and
+  **~zero generation speedup** over CPU — both ~8-10 tok/s on a 7-8B Q4 (vs 35-50
+  on a real dGPU). ROCm on gfx90c needs `HSA_OVERRIDE_GFX_VERSION=9.0.0` and is
+  unreliable — use Vulkan/CPU. So the local box is a **dedicated local-LLM node**
+  (it can run **qwen2.5-8B Q4** at ~8-10 tok/s *only if build activity is stopped*
+  — the user's own call: not enough cores/RAM for build+model at once), serving a
+  privacy/offline/cheap-default `local-llm` tier + command routing — NOT the fast
+  latency brain. Per-host role isolation: this node serves the model and does NOT
+  run heavy builds.
+- **Heavy builds belong in the cloud.** Because the local box is dedicated to the
+  model, Rust/CI/ML build jobs are pushed to **burst cloud pods** (CPU for
+  compilation, GPU on-demand for ML) via the dispatch layer + sccache-dist build
+  servers in the cloud — freeing local cores for inference.
 - **The cloud node should be cheap-coordinator + API-brain, not a GPU.** Research
   is decisive: at personal voice volume the Anthropic API costs ~$3-11/mo and
   beats any rentable GPU by 20-40×; self-hosting a big model 24/7 is $200-940/mo
@@ -98,10 +117,17 @@ When constellation is fulfilled:
   node into one private network with stable names.
 - **constellation-bus** — the agorabus↔NATS bridge daemon + NATS hub/leaf config
   + JetStream, carrying `wm.*` fleet-wide while local UDS clients stay unchanged.
-- **constellation-brain-gpu** — llama.cpp Vulkan `llama-server` on the Radeon +
-  a `local-gpu` tier in wintermute-brain serving a fast brain to the fleet.
+- **constellation-brain-gpu** — *SUPERSEDED 2026-06-04 by constellation-brain-local*
+  (assumed a discrete Radeon; the hardware is a 5700U APU). Kept for history; archive.
+- **constellation-brain-local** *(supersedes brain-gpu)* — llama.cpp Vulkan/CPU
+  `llama-server` on the dedicated 5700U node serving qwen2.5-8B as a `local-llm`
+  tier (privacy/offline/default + routing), resource-isolated from builds; honest
+  ~8-10 tok/s, NOT the fast latency brain.
 - **constellation-cloud** — the always-on cheap cloud node: NATS hub + mesh exit
   + offline-fallback brain, provisioned by the same Ansible.
+- **constellation-cloud-build** *(refines dispatch)* — make the cloud the build/CI
+  workhorse: cloud sccache-dist build servers + burst CPU/GPU pods take the heavy
+  Rust/ML jobs, and dispatch routes builds AWAY from the LLM-dedicated local node.
 - **constellation-dispatch** — JetStream work-queue + capability KV registry +
   sccache-dist distributed builds to maximize throughput across nodes.
 
@@ -129,9 +155,13 @@ each build on the bus.
 - **Mesh control plane sovereignty.** Tailscale (easiest) uses a third-party
   control plane; **Headscale** self-hosted on the cloud node keeps the same UX
   while owning the control. Which matters more — ops simplicity or sovereignty?
-- **The exact Radeon model is unknown** and changes the inference story (RDNA2
-  gfx1030 needs the `HSA_OVERRIDE` dance; RDNA3 mostly "just works"). The brain-gpu
-  PRD must *detect* the GPU (`vulkaninfo`/`lspci`) and pick the path, not assume.
+- ~~The exact Radeon model is unknown~~ **RESOLVED 2026-06-04: it is a Ryzen 7
+  5700U APU (Vega 8 iGPU, no discrete GPU).** This downgrades the local-brain
+  expectation to ~8-10 tok/s and drives the build-out/LLM-in split above. The
+  open follow-on: is the dedicated `local-llm` tier worth the 6-8s/reply for
+  privacy/offline use, or should the local box instead be a CPU build node and the
+  brain stay fully cloud? (User's stated preference 2026-06-04: dedicate local box
+  to the model, push builds to cloud — so local-llm it is, builds out.)
 - **Secrets bootstrapping** — every host needs one root secret (age key / SSH key
   / Vault password) delivered out-of-band before it can decrypt the rest. What's
   the delivery channel (USB, manual paste, the cloud node's tunnel)?

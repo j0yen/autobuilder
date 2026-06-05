@@ -5054,3 +5054,37 @@ Open questions (vision doc): bit-for-bit vs convergent-identical (only NixOS giv
 Cross-links: distinct from kin/homestead (elder COMPANION device) — constellation is
   jsy's own DEV fleet. Reuses wintermute-brain ladder, agorabus, linux-wintermute
   kernel, ~/wintermute/dotfiles + wintermute-desktop.
+
+## 2026-06-04T  /dream  vision-constellation  (HARDWARE CORRECTION + build/LLM split)
+Seed: jsy corrections — "its a Ryzen 7 5700U" + "run build jobs in the cloud so we
+  can use localhost with a local LLM. not enough RAM nor CPU for both." + "we may be
+  able to run qwen2.5 8B if we stop all build activity here."
+VERIFIED via research agent: the "32GB AMD desktop w/ medium Radeon" is actually a
+  Ryzen 7 5700U = Zen 2 "Lucienne" APU, 8c/16t, Vega 8 iGPU (gfx90c), NO discrete
+  GPU, NO VRAM, ~51 GB/s shared DDR4. llama.cpp Vulkan on the Vega iGPU gives ~2x
+  prompt-prefill but ~ZERO generation gain vs CPU (both bandwidth-bound) → ~8-10
+  tok/s on 7-8B Q4 (vs 35-50 on a real dGPU). ROCm on gfx90c needs HSA_OVERRIDE=
+  9.0.0 and is UNRELIABLE/slower → use Vulkan or CPU, never ROCm.
+ARCHITECTURE CHANGE (the earlier brain-gpu assumption was WRONG):
+  - SUPERSEDED PRD-constellation-brain-gpu.md (assumed discrete Radeon, ~2-4s brain).
+    /build: ARCHIVE it, do NOT build it.
+  - NEW PRD-constellation-brain-local.md (supersedes brain-gpu): dedicate the 5700U
+    to a local LLM (llama.cpp Vulkan/CPU, qwen2.5-8B Q4 ~8-10 tok/s) as a `local-llm`
+    tier (privacy/offline/default+routing), RESOURCE-ISOLATED from builds. Honest:
+    NOT the fast latency brain (cloud Anthropic stays that). Builds do NOT run here.
+  - NEW PRD-constellation-cloud-build.md (refines dispatch + cloud): cloud becomes
+    the BUILD workhorse — sccache-dist build servers on the cheap cloud node + burst
+    CPU/GPU pods on demand; dispatch routing sends build jobs to cloud (+ laptop when
+    voice-idle) and NEVER to the no_build:true / role:local-llm 5700U node. Corrects
+    constellation-dispatch's "build servers on desktop+cloud" (desktop is now model-
+    only). Cost guardrails: burst pods created on-demand, torn down, lifecycle+cost
+    logged, monthly burst-budget cap.
+Vision doc UPDATED (durable): hardware reality, build-out/LLM-in resource spine,
+  components list (brain-gpu→superseded, +brain-local, +cloud-build), Radeon-model
+  OQ resolved.
+Notes for /build: constellation fleet now 8 active PRDs (provision, appearance,
+  mesh, bus, brain-LOCAL, cloud, cloud-build, dispatch) + 1 superseded (brain-gpu →
+  archive). Dependency order unchanged except brain-gpu→brain-local and cloud-build
+  refines dispatch. The 5700U advertises no_build:true so builds never contend with
+  the model. Local box = model node; cloud = hub + build workhorse; laptop = voice
+  node (+ idle-time builder); Anthropic API = latency brain.
