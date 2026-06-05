@@ -5123,3 +5123,8 @@ Vision doc UPDATED (durable): 3-machine fleet role table, GTX 1080 resource spin
 Notes for /build: fleet now ~9 active PRDs. brain-cuda is the headline new capability
   (fast local brain). Two physical confirmations still open: (a) tower PSU has a spare
   8-pin PCIe + ~500W for the 1080; (b) nvidia-dkms builds clean against linux-wintermute.
+
+## 2026-06-04T  /dream  constellation  (GTX 1080 powered+running — PSU gate closed)
+jsy: "it's already plugged in and running." The GTX 1080 PSU/8-pin gate is CLOSED.
+Only software step left for the fast local brain: nvidia-dkms builds clean against
+linux-wintermute (brain-cuda AC1). Hardware for the ~2-3s local-gpu brain is GO.

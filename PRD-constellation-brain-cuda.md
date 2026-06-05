@@ -60,10 +60,11 @@ Two coupled pieces (the CUDA analogue of the superseded Vulkan brain-gpu):
     --port 8080 --api-key <token from encrypted store>`, model resident, restart-on-
     failure, bound to the **mesh only** (Tailscale ACL restricts `:8080` to fleet
     tags).
-  - a documented **PSU/connector preflight** note: GTX 1080 needs one 8-pin PCIe
-    power and ~500W PSU — the role checks `nvidia-smi` power draw is sane and warns
-    if the card isn't getting full power (an unflagged open item to confirm on the
-    physical tower).
+  - power: **CONFIRMED 2026-06-04 — the GTX 1080 is already plugged in and running
+    in the tower**, so the PSU/8-pin gate is closed. The role still does a light
+    `nvidia-smi` power-draw sanity check, but this is no longer an open hardware
+    risk. The only remaining provisioning wrinkle is the nvidia-dkms build against
+    `linux-wintermute` (AC1).
 - **Brain ladder integration (rust-extend into `wintermute-brain`):**
   - a **`local-gpu` tier** at `http://<tower-magicdns>:8080/v1`, configurable via
     `WM_BRAIN_GPU_ENDPOINT`, placed in the ladder **between local-3b and cloud
@@ -105,5 +106,5 @@ Non-goals: the mesh/bus/cloud/dispatch; the 5700U build node (cloud-build); the
    brain (verified against dispatch routing).
 7. Endpoint + api-key come from config/encrypted store (not hardcoded);
    `wmd swap-model local-gpu` and the route/observability surfaces treat the tier
-   like the others. The PSU/8-pin power preflight is documented as an item to
-   confirm on the physical tower.
+   like the others. (PSU/8-pin power confirmed 2026-06-04 — card is plugged in and
+   running; no open hardware gate. Only nvidia-dkms-vs-custom-kernel remains, AC1.)
