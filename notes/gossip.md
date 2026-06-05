@@ -4944,3 +4944,54 @@ Open questions: wm-lucid as new repo (assumed yes) vs subcommand on existing
   future lucid-extend); explain persona = hearth (elder) vs flat (jsy).
 Cross-links: distinct from earshot (tempo) and scribe (journaling); explain's
   elder-facing voice borrows hearth's persona.
+
+## 2026-06-04T  /dream  vision-homeward  (FIRST outward-facing vision)
+Seed: jsy (interactive) — "a real-time database of missing dogs... research deeply
+  for all public info on dogs in shelters... reconnect them with owners. We will
+  need ML to match dogs by photos." + "also include cats."
+Drafted: PRD-homeward-schema.md, PRD-homeward-connectors.md, PRD-homeward-ingest.md,
+  PRD-homeward-embed.md, PRD-homeward-match.md, PRD-homeward-report.md
+Vision: visions/homeward.md
+Order: schema -> connectors -> ingest -> embed -> match -> report
+  (embed consumes ingested photos; match reads embed+store; report sits on top)
+Grounded in DEEP external research (4 parallel research agents, 2026-06-04 — full
+  findings in the PRDs' "Why" sections). Load-bearing facts for /build:
+  - Petfinder public API was RETIRED Dec 2, 2025. DO NOT build on it (the obvious
+    stale instinct). Foundation = RescueGroups.org JSON:API v5 (free, national,
+    ToS permits cached derivative search if refresh >=weekly + 1-business-day org
+    deletion + no resale + hotlink images) AND municipal Socrata/SODA feeds
+    (Austin fdzn-9yqv, Dallas qgg6-h4bd, Sonoma 924a-vesw, Long Beach) which are
+    the STRAY tier (Intake_Type=STRAY, Found_Location, Chip_Status) = the actual
+    lost-pet population. Adoptable-only feeds don't isolate strays.
+  - Competitor Petco Love Lost already does national AI matching but is a CLOSED
+    walled garden (no public API, black-box model, US-only). homeward's wedge =
+    OPEN: open API + open data + auditable matcher + broader federation + owner
+    control + real-time deltas.
+  - ML (homeward-embed is the ONE non-Rust PRD, build_target=mixed, Python/uv):
+    v1 = YOLO body-crop (COCO has dog AND cat) -> DINOv2 ViT-B/14 (Apache-2.0,
+    COMMERCIAL-OK; ViT-S for this CPU-only box) -> HNSW cosine kNN -> human
+    shortlist. AVOID MegaDescriptor (CC-BY-NC, non-commercial) and PetFace weights
+    (research-gated) for v1. v2 = fine-tune ArcFace on PetFace (46k dog + cat
+    IDs). ANTI-TAUTOLOGY IS AN AC: eval harness MUST refuse overlapping train/eval
+    individual IDs (see feedback_agent_written_fixtures_tautology — wm-router
+    100%->73.5% on held-out). Recall's BGE+vector-index is the structural model.
+  - Legal/ethics encoded as ACs: hotlink/thumbnail images NEVER bulk-copy full-res
+    (copyright; PhotoRef has no bytes field by design); strip EXIF; broker contact
+    (no raw phone/email in any read path); coarsen geo (no street address); respect
+    stray-hold windows (stray-in-hold = reclaimable, NOT adoptable); matches are
+    CANDIDATES not confirmations (type has no is_match field). PII report store is
+    a SEPARATE trust zone, never reachable via the open API.
+Notes for /build:
+  - homeward-schema MUST land first (rust-lib, creates the ~/wintermute/homeward
+    cargo workspace); the other 5 are rust-extend build_into ~/wintermute/homeward.
+  - homeward-embed is Python (uv) sidecar; Rust calls it over a localhost socket —
+    no Python types in the Rust crates. Likely needs torch/DINOv2 download; on this
+    CPU-only laptop use ViT-S and expect the gallery embed to be the only heavy
+    (one-time) cost.
+  - homeward-ingest is a daemon w/ sqlite store (rusqlite, toolkit sqlite-first).
+Open questions (left for /dream extend homeward, NOT drafted — honest per rule 6):
+  outward syndication (one report -> PawBoost/Pet FBI-LDOA/Nextdoor + pull matches
+  back) is the biggest practical gap but not yet thought through; microchip-registry
+  federation (AAHA gated, missing AVID) needs partnerships not scraping; commercial-
+  vs-nonprofit licensing choice gates which ML weights are legal to ship.
+Cross-links: structurally mirrors ~/wintermute/recall (embedder + vector index).
