@@ -1,4 +1,0 @@
-{
-    "rust-analyzer.checkOnSave.command": "clippy",
-    "rust-analyzer.checkOnSave.extraArgs": ["--", "-W", "clippy::pedantic"]
-}

@@ -62,16 +62,19 @@ when not.
 │   └── test-map.json
 ├── corpora/                  # JSONL eval corpora consumed by metric-harness
 ├── scripts/run-metrics.sh    # emits autobuilder.metrics.v1 for this repo
-├── autoresearch-macos/       # vendored MPS fork of Karpathy's autoresearch
-├── jankurai/                 # vendored audit-standard repo
-├── jeryu/                    # vendored proof-receipt control plane
 ├── PLAN.md                   # full skill design
 └── PRD-mcp-metadata-tuner.md # the first dogfooded PRD
 ```
 
-The `autoresearch-macos/`, `jankurai/`, and `jeryu/` directories are upstream
-reference material vendored alongside the skill, not part of the autobuilder
-crate.
+The ideas `autobuilder` synthesizes were lifted from three upstream
+repositories: [`miolini/autoresearch-macos`](https://github.com/miolini/autoresearch-macos)
+(locked harness + a single unfakeable scalar metric), `neverhuman/jankurai`
+(repository-local evidence receipts and an anti-pattern catalog), and
+`neverhuman/jeryu` (N-of-N signed proof receipts on a risk gate). They were
+previously vendored into this tree for reference but have been removed: the
+relevant shapes are already translated into the skill files (provenance is noted
+inline, e.g. "Lifted from `jankurai/agent/JANKURAI_STANDARD.md`"). Clone the
+upstreams directly if you need the originals.
 
 ## The pipeline
 
