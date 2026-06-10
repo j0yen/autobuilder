@@ -1,0 +1,27 @@
+[package]
+name = "autobuilder-ac-counter"
+version = "0.1.0"
+edition = "2021"
+description = "Counts acceptance criteria correctly across split-file, monolithic, and mock test layouts"
+license = "MIT"
+
+[lib]
+name = "autobuilder_ac_counter"
+path = "src/lib.rs"
+
+[[bin]]
+name = "autobuilder-ac-counter"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = ["clap", "serde_json"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+
+[dev-dependencies]
+serde_json = "1"

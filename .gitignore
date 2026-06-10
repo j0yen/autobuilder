@@ -7,3 +7,6 @@ target/
 /autoresearch-macos/
 /jankurai/
 /jeryu/
+
+tools/*/target/
+tools/*/Cargo.lock

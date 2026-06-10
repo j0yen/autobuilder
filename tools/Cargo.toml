@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = [
+    "autobuilder-ac-counter",
+    "autobuilder-bincov-receipt",
+    "autobuilder-harness-portability-audit",
+    "autobuilder-proposal-aggregator",
+]

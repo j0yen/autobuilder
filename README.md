@@ -26,27 +26,45 @@ git clone --depth 1 https://github.com/j0yen/autobuilder.git
 Claude Code picks up the skill on the next session start.
 `/autobuilder <PRD-path>` invokes it.
 
-### Full pipeline — skill + companion binary (covers Stages 3-5)
-
-The metric harness, iterate-and-prove loop, risk gate, postmortem,
-and evolve subcommands all live in the companion Rust crate. Install:
+### Full install — skill + all tools + companion binary
 
 ```sh
-git clone --depth 1 https://github.com/j0yen/autobuilder.git
-cd autobuilder
-./skill/install.sh
-cargo install --path autobuilder
+curl -fsSL https://raw.githubusercontent.com/j0yen/autobuilder/main/skill/install.sh | bash
 ```
 
-The binary lands in `~/.cargo/bin/`. The skill's shell scripts shell
-out to it when present and fall back gracefully (Stage 1-2 only)
-when not.
+Or manually:
+```sh
+git clone --depth 1 https://github.com/j0yen/autobuilder.git
+./autobuilder/skill/install.sh
+```
+
+When `cargo` is on your PATH, `install.sh` automatically builds and installs:
+- The 4 companion CLIs (`autobuilder-ac-counter`, `autobuilder-bincov-receipt`,
+  `autobuilder-harness-portability-audit`, `autobuilder-proposal-aggregator`)
+- The pipeline companion binary (`autobuilder`)
+
+Without `cargo`, the skill still works for Stages 1–2.
 
 ### Prerequisites
 
 - Stages 1-2: `bash`, `jq`, `git`. Claude Code for the skill itself.
 - Stages 3-5: `cargo` / `rustc 1.85+`, `cargo-deny`, `cargo-nextest`,
   optional `cargo +nightly miri` (only when `--allow-unsafe`).
+
+## Tools
+
+Four standalone Rust CLIs shipped alongside the skill. Built and installed
+automatically by `install.sh` when `cargo` is present; also installable
+individually via `cargo install --path tools/<name>`.
+
+| Binary | What it does |
+|--------|-------------|
+| `autobuilder-ac-counter` | Counts acceptance criteria correctly across split-file (`acceptance_*.rs`), monolithic (`acceptance.rs` with `ac\|new_ac\|ext` families), and mock (`tests/mocks/`) layouts. Fixes the `run-metrics.sh` undercount. |
+| `autobuilder-bincov-receipt` | Detects `[[bin]]` crates that ship a binary but have no `tests/integration_cli.rs` driving it via `std::process::Command`. Emits a `bincov.v1` receipt; `--strict` exits 3. |
+| `autobuilder-harness-portability-audit` | Scans harness scripts for Linux-only idioms (`nproc`, `/proc/`, `flock`, `date -d`, `readlink -f`, `sed -i`, `stat -c`) and reports macOS-equivalent suggestions. Draft-only; `--strict` exits 4. |
+| `autobuilder-proposal-aggregator` | Clusters the `proposals/*.json` pile by `target_file` + lexical-Jaccard rationale similarity, ranks by distinct-crate recurrence, filters `applied.log`. Emits `hardening-backlog.json`. |
+
+Source for each tool lives under `tools/<name>/` in this repo.
 
 ## Repository layout
 
@@ -55,6 +73,11 @@ when not.
 ├── autobuilder/              # Cargo workspace: the autobuilder companion binary
 │   ├── src/                  #   one module per pipeline stage / receipt producer
 │   └── crates/metric-harness/#   reusable metric-harness crate
+├── tools/                    # standalone Rust CLIs (built by install.sh)
+│   ├── autobuilder-ac-counter/
+│   ├── autobuilder-bincov-receipt/
+│   ├── autobuilder-harness-portability-audit/
+│   └── autobuilder-proposal-aggregator/
 ├── agent/                    # canonical agent-state files (intent-card, owner-map, …)
 │   ├── intent-card.json
 │   ├── owner-map.json

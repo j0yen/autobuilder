@@ -81,10 +81,41 @@ if [ -n "$RESCUE_PROPOSALS" ]; then
   echo "→ restored proposals → $TARGET/proposals"
 fi
 
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
+if command -v cargo >/dev/null 2>&1; then
+  echo
+  echo "→ cargo found — building autobuilder tools..."
+  TOOLS_DIR="$REPO_ROOT/tools"
+  if [ -d "$TOOLS_DIR" ]; then
+    for tool_dir in "$TOOLS_DIR"/autobuilder-*/; do
+      tool_name=$(basename "$tool_dir")
+      echo "  → installing $tool_name..."
+      cargo install --path "$tool_dir" --quiet && echo "    ✓ $tool_name → ~/.cargo/bin/$tool_name" || echo "    ✗ $tool_name failed (see above)"
+    done
+  fi
+  if [ -d "$REPO_ROOT/autobuilder" ]; then
+    echo "  → installing autobuilder companion binary..."
+    cargo install --path "$REPO_ROOT/autobuilder" --quiet && echo "    ✓ autobuilder → ~/.cargo/bin/autobuilder" || echo "    ✗ autobuilder failed (see above)"
+  fi
+else
+  echo
+  echo "  (cargo not found — install Rust from https://rustup.rs/ then re-run this script"
+  echo "   or manually: cd $REPO_ROOT && cargo install --path tools/autobuilder-ac-counter"
+  echo "                                  cargo install --path tools/autobuilder-bincov-receipt"
+  echo "                                  cargo install --path tools/autobuilder-harness-portability-audit"
+  echo "                                  cargo install --path tools/autobuilder-proposal-aggregator"
+  echo "                                  cargo install --path autobuilder)"
+fi
+
 echo
 echo "✓ autobuilder skill installed."
 echo
-echo "Next steps:"
-echo "  1. Open Claude Code; on next session start, /autobuilder is available."
-echo "  2. For Stages 3-5, build the companion binary:"
-echo "     cd \"$(dirname "$SCRIPT_DIR")\" && cargo install --path autobuilder"
+echo "Binaries available (if cargo was found):"
+echo "  autobuilder-ac-counter          — count ACs across all test layouts"
+echo "  autobuilder-bincov-receipt      — detect untested [[bin]] crates"
+echo "  autobuilder-harness-portability-audit — scan scripts for Linux-only idioms"
+echo "  autobuilder-proposal-aggregator — cluster proposal pile into ranked backlog"
+echo "  autobuilder                     — companion pipeline binary (Stages 3-5)"
+echo
+echo "Skill: open Claude Code and invoke with /autobuilder <PRD-path>"

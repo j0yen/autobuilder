@@ -1,0 +1,8 @@
+[package]
+name = "assert-cmd-crate"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "assert-cmd-crate"
+path = "src/main.rs"
