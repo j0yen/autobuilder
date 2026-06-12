@@ -85,9 +85,11 @@ Source for each tool lives under `tools/<name>/` in this repo.
 │   └── test-map.json
 ├── corpora/                  # JSONL eval corpora consumed by metric-harness
 ├── scripts/run-metrics.sh    # emits autobuilder.metrics.v1 for this repo
-├── PLAN.md                   # full skill design
-└── PRD-mcp-metadata-tuner.md # the first dogfooded PRD
+└── PLAN.md                   # full skill design
 ```
+
+PRDs (the inputs this pipeline consumes) live in the private companion
+repo `joeyen-atscale/autobuilder-private`, not here.
 
 The ideas `autobuilder` synthesizes were lifted from three upstream
 repositories: [`miolini/autoresearch-macos`](https://github.com/miolini/autoresearch-macos)
