@@ -227,4 +227,4 @@ its `bootstrap/install.sh` clones each published slice on a fresh machine.
 
 ## License
 
-Dual-licensed under MIT OR Apache-2.0.
+MIT licensed. See [`LICENSE`](./LICENSE).
