@@ -1,9 +1,10 @@
 # autobuilder
 
-PRD-driven, rigorously validated Rust code generation. A Claude Code skill plus
-a companion Rust binary that turn a Product Requirements Document into a
-working Rust project through an autonomous *iterate-and-prove* loop guarded by
-a 7-receipt release gate.
+Turn a Product Requirements Document into a working Rust project, through an autonomous *iterate-and-prove* loop guarded by a release gate that won't pass until seven independent receipts agree.
+
+The hard part of letting an agent write code is not generating it — it's knowing when to trust what came out. autobuilder's answer is to separate the writing from the proving. The agent edits only `src/`; the harness around it — `Cargo.toml`, lints, tests, the metric script — is read-only, so the thing being measured can't rewrite its own measurement. A change advances only if it improves an unfakeable scalar metric, and a slice ships only when seven separately-produced, digest-bound receipts all attest to the same `HEAD`. The structure is the argument: nothing here asks you to trust the agent's word.
+
+It comes in two pieces — a Claude Code skill that orchestrates the five stages, and a companion Rust binary that owns the parts too consequential to leave in shell (intent-card validation, the loop runner, receipt writing, the gate).
 
 ## Install
 
@@ -167,8 +168,10 @@ clippy lints (`unwrap_used`, `expect_used`, `panic`, `unreachable`,
 ```
 autobuilder intake          # Stage 1: validate intent-card.json
 autobuilder scaffold        # Stage 2: materialize a project from templates/
+autobuilder experiment      # Stage 2.5: drive a multi-slice campaign from experiment.toml
 autobuilder loop            # Stage 3: iterate-and-prove
 autobuilder metric-harness  #          run a project's harness, emit metrics.json
+autobuilder adversarial     # Stage 3: prepare/finalize an adversarial-agent test slot
 autobuilder vti-plan        # Stage 4: route changed paths through proof-lanes.toml
 autobuilder rollback-plan   # Stage 4: verify HEAD~N..HEAD is git-revert-clean
 autobuilder reviewer-agent  # Stage 4: prepare/finalize the reviewer receipt
@@ -176,11 +179,12 @@ autobuilder ci-checks       # Stage 4: confirm CI is green via `gh`
 autobuilder gate            # Stage 4: aggregate the 7 receipts → release receipt
 autobuilder postmortem      # Stage 5: aggregate run artifacts
 autobuilder evolve          # Stage 5: gated skill-self-diff
+autobuilder publish         # Stage 6: publish a finished slice as its own j0yen/<slug> repo
 ```
 
-All subcommands are real. The bin has been bootstrapped through its own
-gate (verdict=pass) and dogfooded against an external PRD
-(`mcp-tuner`, 9 ACs green).
+Every subcommand is wired and answers `--help`; the binary builds clean under
+the strict lint set below. The binary is dogfooded — it runs against its own
+repo through `scripts/run-metrics.sh` (see [Dogfooding](#dogfooding)).
 
 ### Dogfooding
 
@@ -199,15 +203,18 @@ cat target/autobuilder/metrics.json
 
 ## The `autobuilder` skill
 
-`autobuilder` is also a Claude Code skill (see `.claude/`). Invoke it from
-inside a Claude Code session with a PRD path:
+The skill source lives under `skill/` (`SKILL.md` plus its prompts, rules,
+schemas, scripts, and templates); `install.sh` symlinks it into
+`~/.claude/skills/autobuilder/`. Invoke it from inside a Claude Code session
+with a PRD path:
 
 ```
-/autobuilder --prd path/to/prd.md
+/autobuilder path/to/prd.md
 ```
 
-…and the skill drives all five stages, leaving every receipt under
-`target/autobuilder/receipts/` for human review.
+The skill drives the stages, shelling out to the companion binary for the
+load-bearing work, and leaves every receipt under
+`target/autobuilder/receipts/` for review.
 
 ## Distribution / publishing
 
@@ -220,10 +227,11 @@ its `bootstrap/install.sh` clones each published slice on a fresh machine.
 
 ## Recent
 
-- **v0.2.0** (2026-05-30): added `autobuilder publish` subcommand — codifies the
-  Stage-6 publish pipeline (README/LICENSE generation, branch normalize, `wm-publish`
-  repo create, `wm-push`, `REPOS.md` update) into a deterministic, idempotent,
-  dry-run-capable command (PRD-autobuilder-publish, ACs 1–9 green).
+- **`autobuilder publish`** codifies the Stage-6 publish step — README/LICENSE
+  generation, branch normalize, repo create, push, `REPOS.md` update — as one
+  idempotent, dry-run-capable command, so publishing a slice stops being a
+  hand-run checklist. See [`autobuilder/CHANGELOG.md`](./autobuilder/CHANGELOG.md)
+  for the version history.
 
 ## License
 

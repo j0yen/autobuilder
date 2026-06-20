@@ -208,7 +208,7 @@ Per-slice steps:
 3. **Commit + push.** Single commit "Prep for standalone distribution: README + dual MIT/Apache-2.0 license" using the `Joe Yen <jyen.tech@gmail.com>` identity for wintermute-ecosystem repos, then `gh repo create j0yen/<slug> --public --source . --remote origin --push`.
 4. **Update wintermute's `REPOS.md`** with a one-line description and category (pipeline/runtime/memory/session/artist). The bootstrap installer will then pick up the new repo on next `install.sh` run.
 
-The autobuilder companion binary does not yet automate Stage 6; it is a manual convention. A future `autobuilder publish` subcommand may codify this.
+`autobuilder publish` codifies these steps — README/LICENSE generation, branch normalize, repo create, push, and the `REPOS.md` update — as one idempotent, dry-run-capable command. Run it instead of the manual checklist above; the steps remain documented here so you can see what the command does.
 
 ## Reused skills
 
@@ -320,12 +320,12 @@ in place (Phase A); the companion Rust binary is built and installed at
 `~/.cargo/bin/autobuilder`, exposing all pipeline subcommands —
 `intake / scaffold / loop / metric-harness / adversarial / experiment /
 gate / rollback-plan / reviewer-agent / vti-plan / ci-checks / postmortem /
-evolve` (Phase B); and the metric-harness meta-PRD plus many external PRDs
-have run through the full loop (Phase C). The pipeline is load-bearing in
-the daily `/build` automation, which delegates every Rust-shaped PRD to it;
+evolve / publish` (Phase B); and the metric-harness meta-PRD plus many
+external PRDs have run through the full loop (Phase C). The daily `/build`
+automation depends on the pipeline, delegating every Rust-shaped PRD to it;
 EvidencePack receipts and postmortems have accumulated across shipped
-projects. Scope remains `--target cli|lib` (services/WASM/embedded are v2),
-and Stage 6 publish is still a manual convention (see that stage).
+projects. Scope remains `--target cli|lib` (services/WASM/embedded are v2);
+Stage 6 publish is now automated by `autobuilder publish`.
 
 ## Resolved block — recall-memory-linter (historical)
 
