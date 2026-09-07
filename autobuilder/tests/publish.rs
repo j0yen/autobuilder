@@ -196,10 +196,28 @@ fn run_publish(env: &Env, extra: &[&str]) -> std::process::Output {
 
 type FileStat = (PathBuf, std::time::SystemTime, u64);
 
+/// True if `path` is a git-internal transient (`.git/**/*.lock`,
+/// `.git/**/*.pid`) that git's own background maintenance / index machinery
+/// may create or remove independent of anything the code under test does
+/// (e.g. `.git/objects/maintenance.lock`, `.git/index.lock`,
+/// `.git/refs/**/*.lock`, `.git/gc.pid`). The exclusion is scoped to these
+/// two extensions under `.git/` — it must not swallow real tracked content.
+fn is_git_transient(path: &Path) -> bool {
+    let under_git = path.components().any(|c| c.as_os_str() == ".git");
+    under_git
+        && matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("lock") | Some("pid")
+        )
+}
+
 fn walk(dir: &Path, out: &mut Vec<FileStat>) {
     let Ok(rd) = fs::read_dir(dir) else { return };
     for e in rd.flatten() {
         let p = e.path();
+        if is_git_transient(&p) {
+            continue;
+        }
         let md = e.metadata().unwrap();
         if md.is_dir() {
             walk(&p, out);
@@ -263,6 +281,49 @@ fn ac2_dry_run_no_writes_no_network() {
     // zero network: no wrapper invoked
     assert!(!env.publish_log.exists(), "wm-publish was invoked in dry-run");
     assert!(!env.push_log.exists(), "wm-push was invoked in dry-run");
+}
+
+// ---------------------------------------------------------------------------
+// Regression — the snapshot comparator used by ac2_dry_run_no_writes_no_network
+// must ignore git-internal `.lock`/`.pid` transients (git's own background
+// maintenance / index machinery may create or remove these independent of
+// the code under test). This is the exact shape of the flake seen twice in
+// CI (autobuilder run 34148731828, rustbuild run 34151347561): a stray
+// `.git/objects/maintenance.lock` appeared between the pre/post snapshots.
+// ---------------------------------------------------------------------------
+#[test]
+fn snapshot_ignores_git_lock_and_pid_transients() {
+    let env = make_env("lock-flake-slug", true, 0, "wm-publish: created\n");
+    let before = snapshot(&env.project);
+    // Simulate git's background maintenance / index machinery dropping
+    // transient lock/pid files between the two snapshot calls.
+    fs::write(env.project.join(".git/objects/maintenance.lock"), b"").unwrap();
+    fs::write(env.project.join(".git/index.lock"), b"").unwrap();
+    fs::write(env.project.join(".git/gc.pid"), b"12345").unwrap();
+    let refs_heads = env.project.join(".git/refs/heads");
+    fs::write(refs_heads.join("main.lock"), b"").unwrap();
+    let after = snapshot(&env.project);
+    assert_eq!(
+        before, after,
+        "snapshot comparator should ignore .git/**/*.lock and .git/**/*.pid transients"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Negative control — the exclusion above must stay scoped to `.git/**/*.lock`
+// and `.git/**/*.pid`; a real (non-`.git`) project file mutation must still
+// be flagged.
+// ---------------------------------------------------------------------------
+#[test]
+fn snapshot_still_flags_real_file_mutations() {
+    let env = make_env("lock-flake-negctrl-slug", true, 0, "wm-publish: created\n");
+    let before = snapshot(&env.project);
+    fs::write(env.project.join("real-mutation.txt"), b"unexpected write\n").unwrap();
+    let after = snapshot(&env.project);
+    assert_ne!(
+        before, after,
+        "snapshot comparator must still flag real (non-.git) file mutations"
+    );
 }
 
 // ---------------------------------------------------------------------------
