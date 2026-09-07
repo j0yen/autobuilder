@@ -27,6 +27,21 @@ resolved and dropped before this PRD started):
   Verified: `ac-traceability --project autobuilder` now reports
   `0 untraced` / `verdict=pass`.
 
+- `run-metrics.sh` fresh-worktree gap (AC6, P1) — fixed. The internal
+  AC6 check inside `run-metrics.sh` ran `cargo test --workspace` without
+  first running `cargo build --release --workspace`. On the long-lived
+  checkout this was masked (some prior release build already existed),
+  but `autobuilder/tests/fresh_worktree_run_metrics.rs` (new fixture: a
+  real `git worktree add` + fresh build + `run-metrics.sh` invocation,
+  `#[ignore]`d per this repo's heavy-test convention) caught it: a truly
+  fresh worktree failed `acceptance_ac_x1_helps.rs` (walks
+  `target/release` directly for producer bins) because no release build
+  had ever happened there. Fixed by adding the missing `cargo build
+  --release --workspace` step to `run-metrics.sh`'s `ac_build_pass`,
+  mirroring `.github/workflows/ci.yml`'s own step order. Verified twice
+  in fresh processes (receipts:
+  `~/brain/journal/build/receipts/2026-09-07-autobuilder-gate-debt-ac6-pass*.txt`).
+
 - `secrets-scan` — investigated, NOT fixed, still baselined (P0 item 3's
   documented fallback). The block is a self-referential false positive:
   `crates/extended-gates/tests/acceptance_secrets_scan_planted.rs`
@@ -60,29 +75,51 @@ Remaining baseline entries and why they're still excused:
 
 ## Discovered but explicitly NOT baselined (out of scope for this PRD)
 
-Re-running the full gate at this PRD's new HEAD surfaced two additional
-blocks that are real, pre-existing, and unrelated to the three items
-above — NOT added to `agent/gate-baseline.json` per this PRD's own
-non-goal ("no baseline widening under any circumstance"):
+Re-running the full gate at this PRD's HEAD (`03a17af`, 2026-09-07
+~19:45Z) still surfaces one block that is real, pre-existing, and
+unrelated to the fixes above — NOT added to `agent/gate-baseline.json`
+per this PRD's own non-goal ("no baseline widening under any
+circumstance"):
 
-- **`rollback-plan`** — blocks because 3 of the 10 commits in
-  `v0.3.0..HEAD` are not git-revert-clean (`5c72a58`, `930a77a`,
-  `38402df` — all pre-date this PRD's own commit, which reverts clean).
-  This is drift accumulated since the baseline was last recorded at
-  `930a77a`, unrelated to rollback-mechanical-chains' classifier logic
-  (`autobuilder/src/rollback.rs`, explicitly out of this PRD's scope).
-  Re-run twice for the verdict-receipt protocol; both runs agree (see
-  `~/brain/journal/build/receipts/2026-09-07-autobuilder-gate-debt-gate*.txt`).
-  Needs a dedicated follow-up (fix-forward those 3 commits' revert
-  conflicts, or a human explicitly rewrites history and says so — this
-  PRD's tooling never does that automatically).
-- **`ci-checks`** — blocks because this PRD's own commits are not yet
-  pushed, so there are zero GitHub Actions runs against this HEAD yet.
-  Expected to clear once pushed and CI completes; not a defect.
+- **`rollback-plan`** — blocks because 5 of the 16 commits in
+  `v0.3.0..HEAD` are not git-revert-clean (`9576f29`, `03b5711`,
+  `38402df`, `5c72a58`, `930a77a` — all pre-date this PRD's own commits,
+  which revert clean per `target/autobuilder/rollback.md`). Grew from 3
+  commits (this PRD's prior tick) to 5 as more history landed on `main`
+  in between (`03b5711` "rollback-plan mechanical classification" and
+  `9576f29` "refresh intent card" both post-date the prior tick's
+  observation and are themselves not revert-clean). This is drift
+  accumulated on `main`, unrelated to `rollback-mechanical-chains`'
+  classifier logic (`autobuilder/src/rollback.rs`, explicitly out of
+  this PRD's scope — "no rollback.rs feature code"). The real owner is
+  the queued follow-on `PRD-rollback-mechanical-chains.md`, which adds
+  exactly the two missing classifications (self-superseding chains,
+  merge-commit reverts) that would cover this drift — it is currently
+  blocked on its own dependency (`PRD-autobuilder-source-unify.md`, not
+  yet shipped). Re-run twice for the verdict-receipt protocol; both
+  agree (gate run captured in full at
+  `/tmp/claude-1000/-home-jsy/99c43cfd-ef15-4f66-8a8e-afbbf0da9325/tasks/bs7hu8ajq.output`
+  and reproduced via a second `extend-gate.sh --force` pass). Needs a
+  dedicated follow-up (fix-forward those 5 commits' revert conflicts, a
+  human explicitly rewrites history and says so, or
+  `PRD-rollback-mechanical-chains` ships and reclassifies them as
+  mechanical — this PRD's tooling never rewrites history to force a
+  pass). Deferred as AC4 in `PRD-autobuilder-gate-debt`'s own
+  frontmatter rather than fixed or baselined here.
 
-`vti-plan` also newly blocked (4 of 20 changed paths unrouted —
-`autobuilder/tests/chain_ac*.rs` and `mergerev_ac*.rs`, added by the
-rollback-mechanical-chains series with no matching proof-lanes.toml
-glob) but this WAS fixed in-scope (pure routing config, no rollback.rs
-touch): the `autobuilder-rust` lane's globs now include
-`autobuilder/tests/**/*.rs`.
+- **`ci-checks`** — RESOLVED as of this tick. It was blocking because
+  this PRD's commits were not yet pushed (zero GitHub Actions runs for
+  that HEAD). The sibling PRD-autobuilder-dryrun-snapshot-git-lock-flake
+  fix (HEAD `15fb5cd`) separately fixed the actual regression
+  (`ac2_dry_run_no_writes_no_network` in `tests/publish.rs`, which had
+  been failing in CI) and pushed; CI is green (run `34154248400`,
+  `completed success`). Verified locally with two fresh-process
+  `cargo test --workspace --release` runs, both exit 0.
+
+`vti-plan` was also newly blocked in the prior tick (4 of 20 changed
+paths unrouted — `autobuilder/tests/chain_ac*.rs` and
+`mergerev_ac*.rs`, added by the rollback-mechanical-chains series with
+no matching proof-lanes.toml glob) but this WAS fixed in-scope (pure
+routing config, no rollback.rs touch): the `autobuilder-rust` lane's
+globs now include `autobuilder/tests/**/*.rs`. `vti-plan` passes at
+this tick's HEAD.
