@@ -45,16 +45,16 @@ required_commands = [
 
 [[lane]]
 id = "agent"
-description = "Intent-card / proof-lanes / owner-map / test-map changes"
-globs = ["agent/**"]
+description = "Intent-card / proof-lanes / owner-map / test-map changes, including the autobuilder/agent -> ../agent symlink autobuilder's own binary reads when --project resolves to autobuilder/ (PRD-build-extend-gate-nested-crate-project)"
+globs = ["agent/**", "autobuilder/agent"]
 required_commands = [
   "autobuilder vti-plan --project . --base origin/main",
 ]
 
 [[lane]]
 id = "harness"
-description = "scripts/ — the per-project shell harness"
-globs = ["scripts/**"]
+description = "scripts/ — the per-project shell harness, plus rules/ — vendored risk-gate rule scripts scripts/audit.sh sources (onboard-repo.sh's risk-gate wiring, PRD-build-gate-producers)"
+globs = ["scripts/**", "rules/**"]
 required_commands = [
   "bash scripts/run-metrics.sh",
 ]
