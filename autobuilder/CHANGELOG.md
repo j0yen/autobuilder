@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.4.0 — 2026-09-07
+
+`rollback-plan` adds two more commit classifications on top of v0.3.0's
+three named housekeeping shapes: `mechanical(chain)` — a maximal ≥2-commit
+sequence on an allowed same-path set (e.g. `www/`) where each later commit
+supersedes the last, with revert-cleanliness checked once against the
+chain's terminal commit, not per-link — and `mechanical(merge)` — a
+≥2-parent commit verified via a real `git revert --no-commit -m 1` dry-run
+in a scratch worktree, clean → excluded from blocking, conflict → stays
+`substantive` with the conflicting paths recorded in the receipt. The JSON
+receipt gains a `classified` breakdown (`mechanical_pattern`,
+`mechanical_chain`, `mechanical_merge`, `substantive` counts) alongside the
+existing `mechanical_count`/`blocking_count` fields (additive; no existing
+field renamed). On mcphost's live HEAD (v0.13.3..HEAD, 84 commits),
+`blocking_count` drops from 26 to 13: the 15-commit `www:` copy-edit chain
+(split into a 5- and an 11-commit run by an interleaved Cargo.lock sync)
+reclassifies `mechanical(chain)`, and 9 of 17 merge commits reclassify
+`mechanical(merge)`; the remaining 13 (8 merges whose `-m 1` revert
+genuinely conflicts, plus 5 non-chain non-merge commits) are substantive by
+inspection, not a classifier gap — see PRD-rollback-mechanical-chains'
+ship note for the itemized list.
+
 ## v0.3.0 — 2026-09-07
 
 `rollback-plan` now classifies each checked commit as `mechanical` (subject
