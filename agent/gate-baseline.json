@@ -4,10 +4,6 @@
   "head_sha": "930a77a18383a2dad6a17f1cdd9cd95f7f7e6d21",
   "receipts": [
     {
-      "name": "intake",
-      "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/intake.json"
-    },
-    {
       "name": "proof-receipt",
       "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/930a77a18383a2dad6a17f1cdd9cd95f7f7e6d21.json"
     },

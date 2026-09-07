@@ -2,7 +2,7 @@
   "schema": "autobuilder.intent_card.v1",
   "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-rollback-mechanical-commits.md",
   "intent_slug": "autobuilder-rollback-mechanical-commits",
-  "root_motivation": "Six mcphost PRDs (`mcphost-tool-test`, `mcphost-metered-overage`, `mcphost-python-kind-runtime`, `mcphost-ci-sandbox-coverage`, `mcphost-healthz-minimal`, `mcphost-rest-bridge`, plus the meta-PRD `build-extend-gate-receipts`) have been re-hitting the identical `rollback-plan` gate block for hours across dozens of ticks today (2026-09-07). This tick fixed the sibling `vti-plan` blocker (a one-line unrouted-path fix, `d3668a0`) and confirmed `reviewer-agent`'s own block is just echoing `rollback-plan` \u2014 so `rollback-plan` is now the *only* root blocker left on mcphost, and it is a self-reinforcing trap, not real risk: `rollback-plan`'s base tag is pinned at `v0.13.3` (the newest tag reachable from HEAD) because nothing has passed the gate since, so every intent-card-refresh, `Cargo.lock` version-field sync, and \"parallel integrate\" version-bump commit from every sibling PRD keeps piling into the checked range (52-80 commits and counting), each one non-revert-clean only because a *late...",
+  "root_motivation": "Six mcphost PRDs (`mcphost-tool-test`, `mcphost-metered-overage`, `mcphost-python-kind-runtime`, `mcphost-ci-sandbox-coverage`, `mcphost-healthz-minimal`, `mcphost-rest-bridge`, plus the meta-PRD `build-extend-gate-receipts`) have been re-hitting the identical `rollback-plan` gate block for hours across dozens of ticks today (2026-09-07). This tick fixed the sibling `vti-plan` blocker (a one-line unrouted-path fix, `d3668a0`) and confirmed `reviewer-agent`'s own block is just echoing `rollback-plan` - so `rollback-plan` is now the *only* root blocker left on mcphost, and it is a self-reinforcing trap, not real risk: `rollback-plan`'s base tag is pinned at `v0.13.3` (the newest tag reachable from HEAD) because nothing has passed the gate since, so every intent-card-refresh, `Cargo.lock` version-field sync, and \"parallel integrate\" version-bump commit from every sibling PRD keeps piling into the checked range (52-80 commits and counting), each one non-revert-clean only because a *late...",
   "user_persona": "The autobuilder skill orchestrator (a Claude session) and the human invoking `/autobuilder` from their own project. Both shell out to this binary for the receipt + gate steps that must not live in bash.",
   "unfakeable_metric": {
     "name": "stage4_receipt_producers_callable",
@@ -32,13 +32,13 @@
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a fixture repo with one substantive non-revert-clean commit (an ordinary `src/` change unrelated to any of the three patterns) plus several non-revert-clean mechanical commits, When `rollback-plan` runs, Then `verdict=block` and `blocking_count=1` (the mechanical ones are excluded, the substantive one still blocks) \u2014 proves the fix narrows scope without disabling the check.",
+      "description": "Given a fixture repo with one substantive non-revert-clean commit (an ordinary `src/` change unrelated to any of the three patterns) plus several non-revert-clean mechanical commits, When `rollback-plan` runs, Then `verdict=block` and `blocking_count=1` (the mechanical ones are excluded, the substantive one still blocks) — proves the fix narrows scope without disabling the check.",
       "test": "tests/acceptance_ac4.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the fix landed and version bumped, When `extend-gate.sh /home/jsy/wintermute/mcphost --head <landed sha of this PRD's own commit, applied on top of current mcphost HEAD>` runs (or the equivalent direct `rollback-plan` invocation against mcphost's real history at that HEAD), Then `rollback-plan`'s verdict is `pass` (mcphost's non-revert-clean commits are dominated by the three mechanical shapes per the Problem section's direct verification \u2014 confirm no unexpected substantive blocker rema...",
+      "description": "Given the fix landed and version bumped, When `extend-gate.sh /home/jsy/wintermute/mcphost --head <landed sha of this PRD's own commit, applied on top of current mcphost HEAD>` runs (or the equivalent direct `rollback-plan` invocation against mcphost's real history at that HEAD), Then `rollback-plan`'s verdict is `pass` (mcphost's non-revert-clean commits are dominated by the three mechanical shapes per the Problem section's direct verification - confirm no unexpected substantive blocker rema...",
       "test": "tests/acceptance_ac5.rs"
     },
     {
@@ -78,7 +78,7 @@
     {
       "why": 1,
       "q": "Why a Rust companion binary instead of a pure-skill scaffold?",
-      "a": "Shell is too easy to subvert (set -e off, grep eaten, jq missing). The load-bearing parts \u2014 metric extraction, digest binding, schema validation \u2014 need a typed implementation under tests."
+      "a": "Shell is too easy to subvert (set -e off, grep eaten, jq missing). The load-bearing parts — metric extraction, digest binding, schema validation — need a typed implementation under tests."
     },
     {
       "why": 2,
@@ -104,7 +104,7 @@
   "created_at": "2026-05-22T08:10:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Where does the autobuilder repo's 'project' live for the gate \u2014 repo root or autobuilder/ workspace?",
+      "question": "Where does the autobuilder repo's 'project' live for the gate — repo root or autobuilder/ workspace?",
       "resolution": "Repo root. agent/, scripts/, target/autobuilder/ all sit at /home/jsy/projects/autobuilder/. Proof-lanes globs use autobuilder/src/** prefix to match `git diff` output."
     }
   ]
