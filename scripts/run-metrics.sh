@@ -243,11 +243,28 @@ EOF
 }
 run_ac AC5 ac5_gate_catches_head_sha_mismatch
 
-# AC6: build + clippy strict + test (subshell so cwd is preserved)
+# AC6: build + clippy strict + test (subshell so cwd is preserved).
+#
+# `cargo build --release --workspace` must run before `cargo test
+# --workspace`: several extended-gates integration tests resolve
+# producer binaries via `CARGO_BIN_EXE_<name>`, which only forces a
+# build of the bin(s) each individual test binary actually links
+# against — not every producer bin in the workspace (e.g.
+# acceptance_ac_x1_helps.rs's `every producer bin has --help` check
+# walks target/release directly, not through CARGO_BIN_EXE_*). On a
+# long-lived checkout, some prior `cargo build --release` (or a `cargo
+# test --release` that happened to build them as a side effect) already
+# populated target/release, masking the gap. A fresh worktree has no
+# such history, so without this explicit step this AC — and the CI
+# workflow step it's modeled on (`.github/workflows/ci.yml`'s "cargo
+# build --release --workspace (release binaries the test suite
+# spawns)") — fails there. Caught by
+# `tests/fresh_worktree_run_metrics.rs` (PRD-autobuilder-gate-debt AC6).
 ac_build_pass() {
   (cd "$CRATE_DIR" && \
     cargo check --workspace && \
     cargo clippy --bin autobuilder -- -D warnings && \
+    cargo build --release --workspace && \
     cargo test --workspace)
 }
 run_ac AC6 ac_build_pass
