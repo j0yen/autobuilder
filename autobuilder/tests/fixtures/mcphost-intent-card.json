@@ -1,0 +1,133 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ci-sandbox-coverage.md",
+  "intent_slug": "mcphost-ci-sandbox-coverage",
+  "root_motivation": "Joe's deploy gate treats CI green as evidence. For the sandbox suites — self-test, failure classification, warm-pool eviction, the core of v0.13.0 — that evidence is vacuous: the guard skips on the `CI` environment variable, not on actual capability, so the suites run only on dev boxes with working user namespaces. The 2026-09-03 operator answer scoped the guard to CI deliberately as a stopgap when runners lacked userns; the stopgap now hides all sandbox regressions from every CI run (0.00 s suite time in the actual Actions run at head 6932b87). A sandbox regression merged tomorrow would ship with a green badge and surface only as hub publish failures — the loop's worst and slowest failure family to diagnose.",
+  "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
+  "unfakeable_metric": {
+    "name": "acceptance_tests_passing_count",
+    "lower_is_better": false,
+    "harness_command": "scripts/run-metrics.sh",
+    "target": 15
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "Given a push to main, When the ci workflow runs on the hosted runner, Then the sandbox-ready suites execute with >0 tests run and their assertions evaluated.",
+      "test": "tests/ac01_unauthenticated_lists_signup.rs"
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "Given the capability probe on a userns-capable environment, When tests start, Then no suite skips for capability reasons.",
+      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "description": "Given a runner where userns creation genuinely fails, When the suite runs in CI, Then affected tests skip with the capability reason in the log AND the non-vacuous assertion fails the job.",
+      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "Given a dev box without userns and CI unset, When the suite runs, Then the guard fails loudly (no silent skip), unchanged from the 2026-09-03 contract.",
+      "test": "tests/ac04_publish_list_and_call.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given the CI env var set but capability present, When the suite runs, Then tests execute — the variable alone never causes a skip.",
+      "test": "tests/ac05_cross_tenant_isolation.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "SHOULD",
+      "description": "Given the full workflow on a clean cache, When it completes, Then total added wall time for sandbox suites is ≤5 minutes or the suites run as a parallel job.",
+      "test": "tests/ac06_remove_tool.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MAY",
+      "description": "Given the repo docs, When a contributor reads local-test requirements, Then the userns capability requirement and probe behavior are stated.",
+      "test": "tests/ac07_usage_metering.rs"
+    }
+  ],
+  "scope": [
+    "Derive the advertised MCP-Protocol-Version from rmcp::model::ProtocolVersion::LATEST instead of a string literal.",
+    "Emit ttlMs and cacheScope on every tools/list response in all four authentication states, set in one place all branches flow through.",
+    "Correct the protocol_version_and_log doc comment to match the layer's actual router-wide scope."
+  ],
+  "non_goals": [
+    "Adding real support for protocol 2026-07-28 (SEP-2243 Mcp-Method / Mcp-Param-* headers and per-request _meta).",
+    "The tenant-key hand-off, which is PRD-mcphost-session-key and depends on this PRD.",
+    "Any consumer-facing feature candidate; no measured baseline exists to rank one against.",
+    "Changes to synthorg, whose preflight asserts only that the protocol header is present, not its value."
+  ],
+  "hard_constraints": {
+    "rust_edition": "2024",
+    "target_kind": "cli",
+    "deny_unsafe": false,
+    "max_deps": null,
+    "msrv": null,
+    "additional": {
+      "no_panic_in_src": "BAD_RUST denies unwrap/expect/panic in src/; HeaderValue::from_str is fallible and must be handled without panicking.",
+      "single_application_point": "Requirement 5: the cache fields must be applied once for all Auth branches, not chained per branch.",
+      "no_existing_test_weakened": "AC15: no pre-existing test may be deleted, ignored, or weakened.",
+      "unsafe_scope": "unsafe is confined to src/sandbox.rs pre_exec_setup, where only async-signal-safe libc calls run between fork and exec; this PRD adds none."
+    }
+  },
+  "five_whys_trace": [
+    {
+      "why": 1,
+      "q": "Why can no agent use the deployed mcphost endpoint?",
+      "a": "Its client connects and initializes successfully but sees an empty tool list, so there is nothing to call."
+    },
+    {
+      "why": 2,
+      "q": "Why is the tool list empty for that client?",
+      "a": "The client's tools/list request is refused before mcphost's handler runs, and the error body it parses has no ttlMs or cacheScope, so it reports the result invalid and shows zero tools."
+    },
+    {
+      "why": 3,
+      "q": "Why is the request refused, and why are those fields missing?",
+      "a": "The client sends MCP-Protocol-Version 2026-07-28, which trips rmcp's SEP-2243 validators demanding an Mcp-Method header and per-request _meta; and list_tools sets the cache fields only on the Auth::Tenant branch, so the anonymous branch every new agent hits omits them."
+    },
+    {
+      "why": 4,
+      "q": "Why does the client send 2026-07-28 when rmcp negotiates 2025-11-25?",
+      "a": "Because mcphost's own middleware stamps a hardcoded 2026-07-28 onto every response including initialize, and rmcp never writes that response header itself, so mcphost is the sole source of an advertisement it cannot honour."
+    },
+    {
+      "why": 5,
+      "q": "Why was the constant hardcoded to a version the server cannot serve?",
+      "a": "The vision's Lineage section asserted that rmcp 3.2.0 serves 2026-07-28 statelessly by default; in fact ProtocolVersion::LATEST is 2025-11-25 and 2026-07-28 is only the SEP-2243 threshold. The literal encoded a mistaken belief, and the tests that would have caught it only ever exercised the authenticated branch."
+    }
+  ],
+  "created_at": "2026-09-03T18:04:17Z",
+  "carried_forward": {
+    "user_persona": true,
+    "unfakeable_metric": true,
+    "scope": true,
+    "non_goals": true,
+    "hard_constraints": true,
+    "five_whys_trace": true,
+    "created_at": true,
+    "ambiguities_resolved": true
+  },
+  "ambiguities_resolved": [
+    {
+      "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
+      "resolution": "Almost certainly a client-side deserialization default printed where the wire had nothing (rmcp's own mirror of that shape defaults to ttl_ms 0 / cache_scope Private). Settled by a test rather than an argument: AC2 asserts on the serialized wire JSON, not a deserialized model."
+    },
+    {
+      "question": "Requirement 9 offers two ways to fix the middleware doc/scope mismatch: re-scope the layer to /mcp, or correct the comment to say it is router-wide. Which?",
+      "resolution": "Correct the comment. It is the smaller behavioural change, and an unauthenticated health endpoint carrying an accurate protocol-version header is harmless."
+    },
+    {
+      "question": "reviewer-agent block reason 'diff-scope-not-covered-by-reviewed-intent-card' (receipt target/autobuilder/receipts/reviewer-agent.json, captured_at 2026-09-03T22:11:04Z): b382f7d (v0.5.3) and 11c83a0 (v0.5.2) both implement PRD-mcphost-gate-green requirement 8/9 (CI-scoped sandbox test skip), not the mcphost-protocol-compat work this card's AC1-AC15/five_whys_trace/scope describe -- prd_source still named PRD-mcphost-protocol-compat with no paper trail to the PRD that actually authorized those two commits. Amend in place, or file agent/intent_card_amendment_request.json?",
+      "resolution": "Amended in place: prd_source now points at /home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-green.md (operator decision 2026-09-03). intent_card_amendment_request.json's four kinds (add_ac/relax_must/widen_constraint/out_of_scope) are for an edit-agent halting mid-iteration over a Stage-3 conflict it can't resolve itself; there is no Stage-3 conflict here -- v0.5.2/v0.5.3 touch zero src/ files and change none of AC1-AC15, which remain valid and unmodified (target/autobuilder/results.tsv: ac_pass=19/19 unchanged at b382f7d). This closes the paper-trail gap the reviewer-agent flagged without reopening the protocol-compat contract or halting the loop for a decision already made."
+    }
+  ]
+}
