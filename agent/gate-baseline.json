@@ -16,10 +16,6 @@
       "reason": "reviewer decision=block not in [\"pass\", \"concern\"]"
     },
     {
-      "name": "ci-checks",
-      "reason": "verdict=block not in [\"pass\", \"skipped\"]"
-    },
-    {
       "name": "session-trace",
       "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/session-trace.json"
     },
