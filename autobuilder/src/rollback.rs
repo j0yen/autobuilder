@@ -9,6 +9,7 @@
 use crate::receipt;
 use anyhow::{Context, Result, anyhow};
 use clap::Args as ClapArgs;
+use regex::Regex;
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,6 +33,11 @@ struct CommitEntry {
     subject: String,
     parent_count: usize,
     revertable: bool,
+    /// True when the commit matches one of the known mechanical shapes (see
+    /// `mechanical_patterns`) both by subject line AND by its own
+    /// changed-file set being a subset of that pattern's expected files.
+    /// Mechanical commits never count toward `blocking_count`/`verdict`.
+    mechanical: bool,
     note: String,
 }
 
@@ -44,11 +50,67 @@ struct ReceiptDoc {
     rollback_md: String,
     commit_count: usize,
     revertable_count: usize,
+    /// Commits classified `mechanical` (revert-clean or not) — see
+    /// `CommitEntry::mechanical`.
+    mechanical_count: usize,
     blocking_count: usize,
     verdict: &'static str,
     commits: Vec<CommitEntry>,
     captured_at: String,
     receipt_digest: String,
+}
+
+/// One of the known mechanical commit shapes: a subject-line pattern paired
+/// with the file set a matching commit is allowed to touch. A commit only
+/// classifies as `mechanical` when BOTH the subject matches AND its own
+/// changed-file set is a subset of `allowed_files` — subject alone must
+/// never launder an unexpected file change (e.g. a `src/` edit smuggled
+/// under an `agent: refresh intent card for X` subject).
+struct MechPattern {
+    subject_re: Regex,
+    allowed_files: &'static [&'static str],
+}
+
+/// The three known mechanical commit shapes (PRD-autobuilder-rollback-mechanical-commits):
+/// intent-card refreshes, `Cargo.lock` version-field syncs, and
+/// `worktree-extend.sh integrate`'s own parallel-integrate version-bump
+/// commits. Each shape is non-revert-clean by construction (a later commit
+/// of the same shape always supersedes an earlier one), so none of them
+/// should ever block the rollback-plan gate.
+fn mechanical_patterns() -> Result<Vec<MechPattern>> {
+    Ok(vec![
+        MechPattern {
+            subject_re: Regex::new(r"^agent: refresh intent card for .+$")
+                .context("compiling intent-card-refresh pattern")?,
+            allowed_files: &[
+                "agent/intent-card.json",
+                "agent/intent-card.carried.json",
+                "agent/intent_card_amendment_request.json",
+            ],
+        },
+        MechPattern {
+            subject_re: Regex::new(r"^[A-Za-z0-9_-]+: sync Cargo\.lock version field to .+$")
+                .context("compiling cargo-lock-sync pattern")?,
+            allowed_files: &["Cargo.lock"],
+        },
+        MechPattern {
+            subject_re: Regex::new(
+                r"^[A-Za-z0-9_-]+: v\d+\.\d+\.\d+ (—|--) .+\((parallel integrate|extend)\)$",
+            )
+            .context("compiling parallel-integrate pattern")?,
+            allowed_files: &["Cargo.toml", "Cargo.lock", "CHANGELOG.md"],
+        },
+    ])
+}
+
+/// A commit is `mechanical` when its subject matches one of `patterns` AND
+/// its own changed-file set (`files`) is a subset of that pattern's
+/// `allowed_files`.
+fn classify_mechanical(subject: &str, files: &[String], patterns: &[MechPattern]) -> bool {
+    patterns.iter().any(|p| {
+        p.subject_re.is_match(subject)
+            && files.iter().all(|f| p.allowed_files.contains(&f.as_str()))
+    })
 }
 
 #[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
@@ -63,12 +125,20 @@ pub(crate) fn run(args: Args) -> Result<()> {
         format!("could not resolve --base {} in {}", args.base, project.display())
     })?;
 
+    let patterns = mechanical_patterns()?;
     let commits = list_commits(&project, &args.base)?;
     let mut entries: Vec<CommitEntry> = Vec::with_capacity(commits.len());
     let mut blocking = 0usize;
+    let mut mechanical_count = 0usize;
     for sha in &commits {
-        let entry = check_commit(&project, sha)?;
-        if !entry.revertable {
+        let entry = check_commit(&project, sha, &patterns)?;
+        if entry.mechanical {
+            mechanical_count += 1;
+        } else if !entry.revertable {
+            // Only substantive (non-mechanical) commits count toward
+            // `blocking_count`/`verdict` — a mechanical commit that fails
+            // its revert dry-run stays visible in rollback.md but never
+            // blocks (see requirements P0.2).
             blocking += 1;
         }
         entries.push(entry);
@@ -89,6 +159,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
         rollback_md: rollback_md_rel.to_string_lossy().into_owned(),
         commit_count: entries.len(),
         revertable_count,
+        mechanical_count,
         blocking_count: blocking,
         verdict,
         commits: entries,
@@ -100,7 +171,7 @@ pub(crate) fn run(args: Args) -> Result<()> {
     receipt::write(&receipt_path, value)?;
 
     println!(
-        "rollback-plan: head={head_sha} base={} commits={} revertable={revertable_count} verdict={verdict}",
+        "rollback-plan: head={head_sha} base={} commits={} revertable={revertable_count} mechanical={mechanical_count} verdict={verdict}",
         args.base,
         doc.commit_count
     );
@@ -128,13 +199,15 @@ fn list_commits(project: &Path, base: &str) -> Result<Vec<String>> {
     Ok(out.lines().map(str::to_owned).collect())
 }
 
-fn check_commit(project: &Path, sha: &str) -> Result<CommitEntry> {
+fn check_commit(project: &Path, sha: &str, patterns: &[MechPattern]) -> Result<CommitEntry> {
     let subject = run_git(project, &["log", "-1", "--format=%s", sha])?
         .trim()
         .to_owned();
     let parents_str = run_git(project, &["log", "-1", "--format=%P", sha])?;
     let parents: Vec<&str> = parents_str.split_whitespace().collect();
     let parent_count = parents.len();
+    let files = commit_files(project, sha)?;
+    let mechanical = classify_mechanical(&subject, &files, patterns);
 
     // The mainline parent used as `theirs` for the revert-merge.
     let Some(first_parent) = parents.first() else {
@@ -144,6 +217,7 @@ fn check_commit(project: &Path, sha: &str) -> Result<CommitEntry> {
             subject,
             parent_count: 0,
             revertable: false,
+            mechanical,
             note: "root commit (no parent) cannot be reverted".to_owned(),
         });
     };
@@ -174,8 +248,21 @@ fn check_commit(project: &Path, sha: &str) -> Result<CommitEntry> {
         subject,
         parent_count,
         revertable,
+        mechanical,
         note,
     })
+}
+
+/// The commit's own changed-file set, per `git show --name-only --format=`
+/// (i.e. the diff from its first parent) — never a diff against HEAD.
+fn commit_files(project: &Path, sha: &str) -> Result<Vec<String>> {
+    let out = run_git(project, &["show", "--name-only", "--format=", sha])?;
+    Ok(out
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_owned)
+        .collect())
 }
 
 fn write_rollback_md(
@@ -206,7 +293,13 @@ fn write_rollback_md(
             } else {
                 format!("`git revert {}`", e.short_sha)
             };
-            let mark = if e.revertable { "✓" } else { "✗" };
+            let mark = if e.revertable {
+                "✓"
+            } else if e.mechanical {
+                "✗(M)"
+            } else {
+                "✗"
+            };
             let subject = e.subject.replace('|', "\\|");
             out.push_str(&format!(
                 "| {n} | `{sha}` | {mark} | {cmd} | {subj} |\n",
@@ -215,6 +308,12 @@ fn write_rollback_md(
                 subj = subject,
             ));
         }
+        out.push_str(
+            "\n`(M)` marks a commit classified `mechanical` (matches a known housekeeping \
+             shape — intent-card refresh, Cargo.lock version-field sync, or parallel-integrate \
+             version bump — by both subject line and changed-file set) — non-revert-clean but \
+             excluded from `blocking_count`/`verdict`.\n",
+        );
         out.push_str("\n## Notes\n\n");
         for e in entries {
             out.push_str(&format!("- `{}` — {}\n", e.short_sha, e.note));
