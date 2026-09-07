@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-rollback-mechanical-chains.md",
-  "intent_slug": "rollback-mechanical-chains",
-  "root_motivation": "Joe's gate reports \"N of M commits since the base tag are not revert-clean\" as rollback risk, but on mcphost 24 of the 26 remaining flagged commits (measured at HEAD d3668a0, 2026-09-07, by the predecessor PRD's own AC5 run) are copy-edit chains and merges \u2014 shapes whose rollback story is mechanical (revert the last of the chain / revert the merge with `-m 1`), not risky. Until the classifier knows these shapes, every repo with normal merge history accumulates permanent baselined rollback-plan debt, and the receipt cannot distinguish a repo one bad commit from rollback-safe.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-dryrun-snapshot-git-lock-flake.md",
+  "intent_slug": "autobuilder-dryrun-snapshot-git-lock-flake",
+  "root_motivation": "PRD-fleet-ci-green's build tick diagnosed both flakes today and had to spend an AC-verification cycle re-running the test to prove each one was infrastructure noise rather than a real dry-run regression (see `~/brain/journal/build/2026-09-07.md`, `fleet-ci-green` entries around 18:43 and the AC2/AC3 write-up). The same test will flake again on any future CI run where git's auto-maintenance daemon happens to touch `.git/objects/maintenance.lock` (or a sibling `*.lock` file under `.git/objects` or `.git/refs`) during the snapshot window. Left alone, this either costs a re-run cycle every time it recurs, or \u2014 worse \u2014 trains whoever reads the CI history to assume `ac2_dry_run_no_writes_no_network` failures are always noise, which would mask a real dry-run mutation bug the day one actually appears.",
   "user_persona": "The autobuilder skill orchestrator (a Claude session) and the human invoking `/autobuilder` from their own project. Both shell out to this binary for the receipt + gate steps that must not live in bash.",
   "unfakeable_metric": {
     "name": "stage4_receipt_producers_callable",
@@ -14,38 +14,20 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a fixture repo with a 3-commit chain on one allowed path where each commit fully supersedes the last, When rollback-plan runs, Then all three classify mechanical(chain) and only the terminal commit's revert-cleanliness is checked.",
+      "description": "Given the snapshot helper, When a `.git/objects/maintenance.lock` file is created between the pre- and post- snapshot calls in a test, Then the comparator does not flag it as a mutation.",
       "test": "tests/acceptance_ac1.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same chain interrupted by a substantive commit touching src/, When rollback-plan runs, Then the interrupting commit classifies substantive and the chain segments around it still classify mechanical(chain).",
+      "description": "Given the same helper, When a real (non-`.git`) project file is added, removed, or modified between snapshots, Then the comparator still flags it \u2014 the exclusion is scoped to `.git/**/*.lock` and `.git/**/*.pid`, not a blanket ignore.",
       "test": "tests/acceptance_ac2.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a fixture repo with a clean no-ff merge, When rollback-plan runs, Then the merge classifies mechanical(merge) via a -m 1 dry-run and does not block.",
+      "description": "Given `cargo test --workspace` on RedBaron, When run 5 times back to back, Then `ac2_dry_run_no_writes_no_network` passes all 5 times (baseline: flaked at least twice today under real CI conditions).",
       "test": "tests/acceptance_ac3.rs"
-    },
-    {
-      "id": "AC4",
-      "level": "MUST",
-      "description": "Given a fixture merge whose -m 1 revert conflicts, When rollback-plan runs, Then it stays blocking and the receipt names the conflicting paths.",
-      "test": "tests/acceptance_ac4.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given mcphost's live HEAD at build time, When rollback-plan runs with the new classifier, Then blocking_count \u2264 2 and the receipt's breakdown reports chain and merge counts, or the ship note documents each remaining substantive commit.",
-      "test": "tests/acceptance_ac5.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given the full workspace, When cargo test and clippy -D warnings run at the landed commit, Then both exit 0.",
-      "test": "tests/acceptance_ac6.rs"
     }
   ],
   "scope": [
