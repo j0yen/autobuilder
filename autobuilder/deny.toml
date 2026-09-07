@@ -29,6 +29,11 @@ confidence-threshold = 0.8
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Workspace-internal path deps (session-trace-receipt, autobuilder-receipt,
+# autobuilder-gate, autobuilder-evolve-safety, ...) are pinned to the exact
+# workspace commit by construction; they don't need a version constraint
+# the way an external "*" dependency would. PRD-fleet-ci-green.
+allow-wildcard-paths = true
 deny = [
   { crate = "openssl", reason = "prefer rustls" },
 ]
