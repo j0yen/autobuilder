@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.1 — 2026-09-07
+
+`tests/publish.rs`'s `ac2_dry_run_no_writes_no_network` test snapshots every file under a test project tree before and after a dry-run publish, then asserts the two snapshots are identical. Twice today (autobuilder CI run 34148731828, rustbuild CI run 34151347561 exercising the same test via a shared code path) the assertion failed only because `.git/objects/maintenance.lock` transiently appeared or disappeared between snapshots — a file git's own background maintenance creates and removes, unrelated to anything the publish dry-run code does. Both failures reproduced as clean passes on immediate local re-run. This PRD makes the snapshot comparator ignore git-internal lock files so the test stops flaking.
+
 ## v0.4.0 — 2026-09-07
 
 `rollback-plan` adds two more commit classifications on top of v0.3.0's
