@@ -53,16 +53,16 @@ required_commands = [
 
 [[lane]]
 id = "harness"
-description = "scripts/ — the per-project shell harness, plus rules/ — vendored risk-gate rule scripts scripts/audit.sh sources (onboard-repo.sh's risk-gate wiring, PRD-build-gate-producers)"
-globs = ["scripts/**", "rules/**"]
+description = "scripts/ — the per-project shell harness, plus rules/ — vendored risk-gate rule scripts scripts/audit.sh sources (onboard-repo.sh's risk-gate wiring, PRD-build-gate-producers), including the autobuilder/scripts -> ../scripts symlink autobuilder's own binary reads when --project resolves to autobuilder/ (PRD-autobuilder-gate-debt, mirroring PRD-build-extend-gate-nested-crate-project's autobuilder/agent symlink)"
+globs = ["scripts/**", "rules/**", "autobuilder/scripts"]
 required_commands = [
   "bash scripts/run-metrics.sh",
 ]
 
 [[lane]]
 id = "docs"
-description = "Markdown docs and PRDs"
-globs = ["*.md", "PLAN.md", "PRD-*.md"]
+description = "Markdown docs and PRDs, including the autobuilder/PRD-*.md copy ac-traceability's source scan reads at the nested Cargo project root (PRD-autobuilder-gate-debt)"
+globs = ["*.md", "PLAN.md", "PRD-*.md", "autobuilder/PRD-*.md"]
 required_commands = []
 
 [[lane]]

@@ -17,6 +17,28 @@ set -uo pipefail
 REPO_ROOT="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$REPO_ROOT"
 
+# Resolve the actual Cargo crate directory. Historically REPO_ROOT was
+# always the outer git repo root with the crate one level down at
+# ./autobuilder (this project's nested-crate layout), so `$REPO_ROOT/autobuilder`
+# was hardcoded at every call site below. That broke the moment a caller
+# passed REPO_ROOT already pointing AT the crate root — e.g. `autobuilder
+# loop --project <resolved-crate-dir>` (extend-gate.sh's nested-crate
+# project-root resolution, PRD-build-extend-gate-nested-crate-project) — the
+# script then tried to `cd .../autobuilder/autobuilder`, which never
+# exists, and AC6 (and anything else depending on it) failed on every
+# `autobuilder loop` invocation even though a plain standalone
+# `scripts/run-metrics.sh` (REPO_ROOT defaulting to the git root) passed.
+# Detect which shape we were handed instead of assuming (per
+# rustbuild-gate-debt's fix for the identical nested-crate layout,
+# PRD-autobuilder-gate-debt).
+if [ -f "$REPO_ROOT/Cargo.toml" ]; then
+  CRATE_DIR="$REPO_ROOT"
+elif [ -f "$REPO_ROOT/autobuilder/Cargo.toml" ]; then
+  CRATE_DIR="$REPO_ROOT/autobuilder"
+else
+  CRATE_DIR="$REPO_ROOT/autobuilder"  # preserve prior (broken) fallback; nothing worse than before
+fi
+
 OUT_DIR="target/autobuilder"
 RUN_LOG="$OUT_DIR/run.log"
 METRICS_FILE="$OUT_DIR/metrics.json"
@@ -32,8 +54,8 @@ find_autobuilder_binary() {
     return
   fi
   local candidates=(
-    "$REPO_ROOT/autobuilder/target/release/autobuilder"
-    "$REPO_ROOT/autobuilder/target/debug/autobuilder"
+    "$CRATE_DIR/target/release/autobuilder"
+    "$CRATE_DIR/target/debug/autobuilder"
   )
   for c in "${candidates[@]}"; do
     if [ -x "$c" ]; then
@@ -223,7 +245,7 @@ run_ac AC5 ac5_gate_catches_head_sha_mismatch
 
 # AC6: build + clippy strict + test (subshell so cwd is preserved)
 ac_build_pass() {
-  (cd "$REPO_ROOT/autobuilder" && \
+  (cd "$CRATE_DIR" && \
     cargo check --workspace && \
     cargo clippy --bin autobuilder -- -D warnings && \
     cargo test --workspace)
