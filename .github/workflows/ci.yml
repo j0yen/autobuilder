@@ -41,6 +41,9 @@ jobs:
       - name: cargo clippy --bin autobuilder (strict)
         run: cargo clippy --bin autobuilder -- -D warnings
 
+      - name: cargo build --release --workspace (release binaries the test suite spawns)
+        run: cargo build --release --workspace
+
       - name: cargo test --workspace
         run: cargo test --workspace
 
