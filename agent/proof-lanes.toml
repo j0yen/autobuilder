@@ -5,8 +5,8 @@
 
 [[lane]]
 id = "autobuilder-rust"
-description = "Behavior changes in the autobuilder binary"
-globs = ["autobuilder/src/**/*.rs"]
+description = "Behavior changes in the autobuilder binary, plus its integration tests (autobuilder/tests/**) — previously unrouted, first surfaced when the rollback-mechanical-chains series added tests/chain_ac*.rs and tests/mergerev_ac*.rs (PRD-autobuilder-gate-debt)"
+globs = ["autobuilder/src/**/*.rs", "autobuilder/tests/**/*.rs"]
 required_commands = [
   "cd autobuilder && cargo check --workspace",
   "cd autobuilder && cargo clippy --bin autobuilder -- -D warnings",

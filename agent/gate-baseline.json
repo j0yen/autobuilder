@@ -1,31 +1,27 @@
 {
   "schema": "autobuilder.gate_baseline.v1",
-  "recorded_at": "2026-09-07T15:29:21Z",
-  "head_sha": "930a77a18383a2dad6a17f1cdd9cd95f7f7e6d21",
+  "recorded_at": "2026-09-07T17:40:00Z",
+  "head_sha": "65bdf752672a01e813713b03cb58ed07a3df1857",
   "receipts": [
     {
-      "name": "proof-receipt",
-      "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/930a77a18383a2dad6a17f1cdd9cd95f7f7e6d21.json"
-    },
-    {
       "name": "risk-gate",
-      "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/risk-gate.json"
+      "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/risk-gate.json",
+      "owner": "unowned — see agent/gate-debt-owners.md (PRD-autobuilder-gate-debt investigated; fixing the audit-checks.sh lookup path surfaces 4 real blocking findings in src/experiment.rs that are out of this PRD's scope to fix)"
     },
     {
       "name": "reviewer-agent",
-      "reason": "reviewer decision=block not in [\"pass\", \"concern\"]"
+      "reason": "reviewer decision=block not in [\"pass\", \"concern\"]",
+      "owner": "self-resolving — PRD-autobuilder-gate-debt's TL;DR expects this to re-evaluate once the rest of the baseline shrinks; re-run after sibling PRDs land"
     },
     {
       "name": "session-trace",
-      "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/session-trace.json"
+      "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/session-trace.json",
+      "owner": "Joe — open question in PRD-autobuilder-gate-debt (RedBaron ctrace permission fix or a permanent host-skip), next maintenance pass"
     },
     {
       "name": "secrets-scan",
-      "reason": "verdict=block not in [\"pass\"]"
-    },
-    {
-      "name": "ac-traceability",
-      "reason": "verdict=block not in [\"pass\"]"
+      "reason": "verdict=block not in [\"pass\"]",
+      "owner": "unowned — PRD-autobuilder-gate-debt investigated (P0 item 3): the finding is the extended-gates crate's own planted-fixture literal in crates/extended-gates/tests/acceptance_secrets_scan_planted.rs matching its own regex when the whole nested crate is scanned; secrets_scan.rs has no config-driven allowlist/skip mechanism (unlike license-audit/ac-traceability's extended-gates.toml hooks) to route around it without editing the shared, fleet-wide extended-gates crate, which is out of this PRD's scope (no library changes). Same false positive is independently baselined in rustbuild's own agent/gate-baseline.json — a fleet-wide fix (an extended-gates.toml-driven path allowlist for secrets-scan) is the real owner, not yet filed as a PRD"
     }
   ]
 }
