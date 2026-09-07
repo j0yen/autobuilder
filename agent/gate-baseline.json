@@ -1,0 +1,39 @@
+{
+  "schema": "autobuilder.gate_baseline.v1",
+  "recorded_at": "2026-09-07T15:29:21Z",
+  "head_sha": "930a77a18383a2dad6a17f1cdd9cd95f7f7e6d21",
+  "receipts": [
+    {
+      "name": "intake",
+      "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/intake.json"
+    },
+    {
+      "name": "proof-receipt",
+      "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/930a77a18383a2dad6a17f1cdd9cd95f7f7e6d21.json"
+    },
+    {
+      "name": "risk-gate",
+      "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/risk-gate.json"
+    },
+    {
+      "name": "reviewer-agent",
+      "reason": "reviewer decision=block not in [\"pass\", \"concern\"]"
+    },
+    {
+      "name": "ci-checks",
+      "reason": "verdict=block not in [\"pass\", \"skipped\"]"
+    },
+    {
+      "name": "session-trace",
+      "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/session-trace.json"
+    },
+    {
+      "name": "secrets-scan",
+      "reason": "verdict=block not in [\"pass\"]"
+    },
+    {
+      "name": "ac-traceability",
+      "reason": "verdict=block not in [\"pass\"]"
+    }
+  ]
+}
