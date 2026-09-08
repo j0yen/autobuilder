@@ -1,7 +1,7 @@
 {
   "schema": "autobuilder.gate_baseline.v1",
-  "recorded_at": "2026-09-07T17:40:00Z",
-  "head_sha": "65bdf752672a01e813713b03cb58ed07a3df1857",
+  "recorded_at": "2026-09-08T13:28:00Z",
+  "head_sha": "8b2fb9c84fda89aac66f593afc6124b315e199b2",
   "receipts": [
     {
       "name": "risk-gate",
@@ -17,11 +17,6 @@
       "name": "session-trace",
       "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/session-trace.json",
       "owner": "Joe — open question in PRD-autobuilder-gate-debt (RedBaron ctrace permission fix or a permanent host-skip), next maintenance pass"
-    },
-    {
-      "name": "secrets-scan",
-      "reason": "verdict=block not in [\"pass\"]",
-      "owner": "unowned — PRD-autobuilder-gate-debt investigated (P0 item 3): the finding is the extended-gates crate's own planted-fixture literal in crates/extended-gates/tests/acceptance_secrets_scan_planted.rs matching its own regex when the whole nested crate is scanned; secrets_scan.rs has no config-driven allowlist/skip mechanism (unlike license-audit/ac-traceability's extended-gates.toml hooks) to route around it without editing the shared, fleet-wide extended-gates crate, which is out of this PRD's scope (no library changes). Same false positive is independently baselined in rustbuild's own agent/gate-baseline.json — a fleet-wide fix (an extended-gates.toml-driven path allowlist for secrets-scan) is the real owner, not yet filed as a PRD"
     }
   ]
 }
