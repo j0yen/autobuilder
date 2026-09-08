@@ -1,23 +1,16 @@
-//! AC1 (PRD-rollback-mechanical-chains): a maximal ≥2-commit sequence on the
-//! chain-allowed path set (`www/`), where each later commit supersedes the
-//! last, classifies `mechanical(chain)` for every member.
-//!
-//! Fixture note (PRD-rollback-chain-member-revert-check): each chain member
-//! here touches its own distinct file under `www/`, so every member is
-//! independently revert-clean — this is the intentionally-disjoint,
-//! genuinely-safe shape check #5's `mechanical(chain)` count is supposed to
-//! mean. (An earlier version of this fixture had all three commits rewrite
-//! the *same* file in sequence; once revert-cleanliness started being
-//! verified per-member instead of only against the chain's terminal commit,
-//! that shape's middle commit turned out to conflict on its own dry-run
-//! revert — exactly the class of gap PRD-rollback-chain-member-revert-check
-//! closes — so it no longer belongs in a "should classify mechanical" test.)
+//! AC2 (PRD-rollback-chain-member-revert-check): the same chain shape as
+//! the AC1 fixture (a 3-commit chain on the chain-allowed path set,
+//! `www/`), but with every member independently revert-clean. Asserts no
+//! regression from the terminal-only baseline for the common case: all
+//! three members still classify `mechanical(chain)` and `blocking_count`
+//! stays 0.
 
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::doc_markdown,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    clippy::panic
 )]
 
 use std::fs;
@@ -73,25 +66,26 @@ fn git_stdout(dir: &Path, args: &[&str]) -> String {
 }
 
 #[test]
-fn chain_ac1_clean_chain_classifies_mechanical() {
+fn chainmember_ac2_all_members_independently_clean_no_regression() {
     let tmp = TempDir::new().unwrap();
     let project = tmp.path();
 
     git(project, &["init", "-q"]);
     git(project, &["symbolic-ref", "HEAD", "refs/heads/main"]);
     fs::create_dir_all(project.join("www")).unwrap();
-    fs::write(project.join("www/index.html"), "v0\n").unwrap();
+    fs::write(project.join("www/base.html"), "v0\n").unwrap();
     commit_all(project, "chore: baseline");
     let base = git_stdout(project, &["rev-parse", "HEAD"]);
 
-    // A 3-commit chain on the chain-allowed path set, each commit touching
-    // its own distinct file so no member's revert interacts with another's.
-    fs::write(project.join("www/tagline-1.html"), "v1\n").unwrap();
-    commit_all(project, "www: tagline v1");
-    fs::write(project.join("www/tagline-2.html"), "v2\n").unwrap();
-    commit_all(project, "www: tagline v2");
-    fs::write(project.join("www/tagline-3.html"), "v3\n").unwrap();
-    commit_all(project, "www: tagline v3");
+    // A 3-commit chain, each member touching its own distinct file — none
+    // of the three interacts with another, so every member's own dry-run
+    // revert is independently clean.
+    fs::write(project.join("www/page-a.html"), "a\n").unwrap();
+    commit_all(project, "www: add page a");
+    fs::write(project.join("www/page-b.html"), "b\n").unwrap();
+    commit_all(project, "www: add page b");
+    fs::write(project.join("www/page-c.html"), "c\n").unwrap();
+    commit_all(project, "www: add page c");
 
     let out = autobuilder()
         .args([
@@ -113,6 +107,7 @@ fn chain_ac1_clean_chain_classifies_mechanical() {
     assert_eq!(receipt["commit_count"], 3, "receipt: {receipt}");
     assert_eq!(receipt["mechanical_count"], 3, "receipt: {receipt}");
     assert_eq!(receipt["classified"]["mechanical_chain"], 3, "receipt: {receipt}");
+    assert_eq!(receipt["classified"]["substantive"], 0, "receipt: {receipt}");
     assert_eq!(receipt["blocking_count"], 0, "receipt: {receipt}");
     assert_eq!(receipt["verdict"], "pass", "receipt: {receipt}");
     assert!(
@@ -126,11 +121,6 @@ fn chain_ac1_clean_chain_classifies_mechanical() {
     for c in commits {
         assert_eq!(c["class"], "mechanical_chain", "receipt: {receipt}");
         assert_eq!(c["mechanical"], true, "receipt: {receipt}");
-    }
-    // Every member — not just the terminal commit — is independently
-    // revert-clean here (PRD-rollback-chain-member-revert-check).
-    for subj in ["www: tagline v1", "www: tagline v2", "www: tagline v3"] {
-        let c = commits.iter().find(|c| c["subject"] == subj).unwrap();
         assert_eq!(c["revertable"], true, "receipt: {receipt}");
     }
 }

@@ -478,15 +478,29 @@ struct CommitMeta {
     files: Vec<String>,
 }
 
+/// One chain member's own, independently-verified revert-cleanliness
+/// (PRD-rollback-chain-member-revert-check). `note` is empty when `clean`,
+/// a human-readable conflict summary otherwise — same shape
+/// `merge_tree_revert_dry_run` already returns for every non-chain commit.
+struct ChainMember {
+    clean: bool,
+    note: String,
+}
+
 /// A qualifying chain run: `[start, end)` indices into the chronological
 /// (oldest → newest) `metas` slice, always `end - start >= 2`.
 struct ChainRun {
     start: usize,
     end: usize,
-    /// Revert-cleanliness of the chain's terminal (most recent) commit only
-    /// — per P0.1, non-terminal members are never individually re-checked.
-    terminal_clean: bool,
-    terminal_note: String,
+    /// Revert-cleanliness of EVERY member of the run, verified
+    /// independently via the same dry-run-revert machinery every
+    /// non-chain, single-parent commit already uses — `members[k]`
+    /// corresponds to `metas[start + k]` (PRD-rollback-chain-member-revert-check,
+    /// closing the gap left by the prior terminal-only check: a non-terminal
+    /// member that is not independently revert-clean — e.g. it deletes a
+    /// path a later member re-adds with different content — no longer
+    /// silently inherits its cleaner siblings' verdict).
+    members: Vec<ChainMember>,
 }
 
 #[allow(clippy::needless_pass_by_value)] // owned `Args` matches the clap-dispatched subcommand contract
@@ -985,8 +999,11 @@ fn commit_meta(project: &Path, sha: &str) -> Result<CommitMeta> {
 /// consecutive single-parent commits whose changed files are all within
 /// `chain_prefixes` (P0.1). Merge commits and commits touching any path
 /// outside the chain-allowed set are never chain candidates, and always
-/// break a run. Each qualifying run's revert-cleanliness is checked once,
-/// against its terminal (most recent) commit only.
+/// break a run. Each qualifying run's members are EACH independently
+/// dry-run-reverted (PRD-rollback-chain-member-revert-check — every
+/// candidate already has exactly one parent by construction above, so
+/// every member reuses the same single-parent `merge_tree_revert_dry_run`
+/// call the non-chain path already uses; no extra worktree is spawned).
 fn detect_chain_runs(
     project: &Path,
     metas: &[CommitMeta],
@@ -1011,20 +1028,23 @@ fn detect_chain_runs(
             j += 1;
         }
         if j - start >= 2 {
-            let terminal_idx = j - 1;
-            let (terminal_clean, terminal_note) = match metas.get(terminal_idx) {
-                Some(terminal) => match terminal.parents.first() {
-                    Some(fp) => merge_tree_revert_dry_run(project, &terminal.sha, fp)?,
-                    None => (false, "chain terminal has no parent".to_owned()),
-                },
-                None => (false, "chain terminal missing (internal error)".to_owned()),
-            };
-            runs.push(ChainRun {
-                start,
-                end: j,
-                terminal_clean,
-                terminal_note,
-            });
+            let mut members = Vec::with_capacity(j - start);
+            for k in start..j {
+                let Some(meta) = metas.get(k) else {
+                    members.push(ChainMember {
+                        clean: false,
+                        note: "chain member missing (internal error)".to_owned(),
+                    });
+                    continue;
+                };
+                // Candidacy above already guarantees exactly one parent.
+                let (clean, note) = match meta.parents.first() {
+                    Some(fp) => merge_tree_revert_dry_run(project, &meta.sha, fp)?,
+                    None => (false, "chain member has no parent".to_owned()),
+                };
+                members.push(ChainMember { clean, note });
+            }
+            runs.push(ChainRun { start, end: j, members });
         }
         i = j;
     }
@@ -1051,25 +1071,49 @@ fn build_entry(
     build_pattern_or_root_entry(project, meta, patterns)
 }
 
-/// A commit that belongs to a qualifying chain run (P0.1): classification
-/// and revert-cleanliness are shared across the whole chain — no per-commit
-/// revert dry-run happens here.
+/// A commit that belongs to a qualifying chain run (P0.1). Each member's own
+/// revert-cleanliness — not the chain's terminal commit's — decides its
+/// classification (PRD-rollback-chain-member-revert-check): a member that is
+/// not independently revert-clean stays `substantive` (and blocking) even
+/// though it sits in an otherwise-mechanical chain; independently-clean
+/// members still classify `mechanical(chain)`.
 fn build_chain_entry(meta: &CommitMeta, idx: usize, run: &ChainRun) -> CommitEntry {
     let chain_len = run.end - run.start;
     let position = idx.saturating_sub(run.start) + 1;
-    let note = format!(
-        "mechanical(chain): member {position} of {chain_len} on the chain-allowed path set; \
-         revert-cleanliness checked once against the chain's terminal commit — {}",
-        run.terminal_note.if_empty_then("clean revert"),
-    );
+    let fallback = ChainMember {
+        clean: false,
+        note: "chain member verification missing (internal error)".to_owned(),
+    };
+    let member = run
+        .members
+        .get(idx.saturating_sub(run.start))
+        .unwrap_or(&fallback);
+    let (class, note) = if member.clean {
+        (
+            CommitClass::MechanicalChain,
+            format!(
+                "mechanical(chain): member {position} of {chain_len} on the chain-allowed path \
+                 set; independently revert-clean",
+            ),
+        )
+    } else {
+        (
+            CommitClass::Substantive,
+            format!(
+                "chain member {position} of {chain_len} on the chain-allowed path set is NOT \
+                 independently revert-clean — {}",
+                member.note.if_empty_then("conflicts during revert"),
+            ),
+        )
+    };
     CommitEntry {
         sha: meta.sha.clone(),
         short_sha: short(&meta.sha),
         subject: meta.subject.clone(),
         parent_count: meta.parents.len(),
-        revertable: run.terminal_clean,
-        mechanical: true,
-        class: CommitClass::MechanicalChain,
+        revertable: member.clean,
+        mechanical: class.is_mechanical(),
+        class,
         note,
     }
 }

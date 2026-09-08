@@ -2,6 +2,14 @@
 //! set (`www/`) interrupted by a substantive commit touching `src/` must
 //! classify the interrupting commit `substantive`, while the chain segments
 //! on either side of it still classify `mechanical(chain)`.
+//!
+//! Fixture note (PRD-rollback-chain-member-revert-check): each segment
+//! commit touches its own distinct file under `www/` so every member is
+//! independently revert-clean under the now-per-member check (a same-file
+//! version of this fixture stopped being all-clean once revert-cleanliness
+//! is verified per member instead of once against each segment's terminal
+//! commit — see the sibling `chainmember_ac*` tests for the case where that
+//! matters).
 
 #![allow(
     clippy::unwrap_used,
@@ -77,20 +85,20 @@ fn chain_ac2_interrupted_chain_splits_around_substantive() {
     commit_all(project, "chore: baseline");
     let base = git_stdout(project, &["rev-parse", "HEAD"]);
 
-    // Segment A: a 2-commit www/ chain.
-    fs::write(project.join("www/index.html"), "a1\n").unwrap();
+    // Segment A: a 2-commit www/ chain, each commit touching its own file.
+    fs::write(project.join("www/copy-a1.html"), "a1\n").unwrap();
     commit_all(project, "www: copy a1");
-    fs::write(project.join("www/index.html"), "a2\n").unwrap();
+    fs::write(project.join("www/copy-a2.html"), "a2\n").unwrap();
     commit_all(project, "www: copy a2");
 
     // Interrupter: a genuine src/ change, breaking path_ok.
     fs::write(project.join("src/lib.rs"), "fn f() { 1 }\n").unwrap();
     commit_all(project, "src: real fix");
 
-    // Segment B: another 2-commit www/ chain.
-    fs::write(project.join("www/index.html"), "b1\n").unwrap();
+    // Segment B: another 2-commit www/ chain, each commit touching its own file.
+    fs::write(project.join("www/copy-b1.html"), "b1\n").unwrap();
     commit_all(project, "www: copy b1");
-    fs::write(project.join("www/index.html"), "b2\n").unwrap();
+    fs::write(project.join("www/copy-b2.html"), "b2\n").unwrap();
     commit_all(project, "www: copy b2");
 
     let out = autobuilder()
