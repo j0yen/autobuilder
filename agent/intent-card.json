@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-msrv-icu-idna-toolchain.md",
-  "intent_slug": "autobuilder-msrv-icu-idna-toolchain",
-  "root_motivation": "Two sibling PRDs (`autobuilder-dryrun-snapshot-git-lock-flake`, `autobuilder-gate-debt`) are both blocked at `gate-red` on this same MSRV mismatch, neither is scoped to fix it (one is a test-only comparator fix, the other explicitly excludes rollback/toolchain changes from its Engineering target), and a third (`rollback-mechanical-chains`) sits behind `autobuilder-source-unify` \u2014 the very merge that introduced the break \u2014 with no PRD yet targeting the toolchain pin itself. Left alone, every future tick against `~/wintermute/autobuilder` fails `cargo check --workspace` before it can even run tests, and the fleet's 1.85-pinned/1.88-pinned split means this keeps resurfacing anywhere a transitive dep bump lands on a still-1.85 repo.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-rollback-chain-member-revert-check.md",
+  "intent_slug": "rollback-chain-member-revert-check",
+  "root_motivation": "`mechanical(chain)` currently answers \"does the chain's final state revert cleanly,\" not \"is every commit in this chain individually safe to roll back to\" \u2014 but `blocking_count` and the receipt's `classified` breakdown are read as the latter (per PRD-rollback-mechanical-chains's own Problem statement: \"the receipt cannot distinguish a repo one bad commit from rollback-safe\"). A chain member that is not independently revert-clean \u2014 because an intermediate step deletes a path a later step recreates with different content, or reorders/renames within the chain in a way the terminal diff doesn't literally undo \u2014 currently passes silently as `mechanical(chain)` alongside its cleanly-superseding siblings. This is the second-largest fidelity gap the mechanical classifier still has (after the merge-conflict case that PRD-rollback-mechanical-chains already handles correctly by NOT classifying conflicting merges as mechanical).",
   "user_persona": "The autobuilder skill orchestrator (a Claude session) and the human invoking `/autobuilder` from their own project. Both shell out to this binary for the receipt + gate steps that must not live in bash.",
   "unfakeable_metric": {
     "name": "stage4_receipt_producers_callable",
@@ -14,20 +14,14 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a clean checkout of `~/wintermute/autobuilder/autobuilder` at this PRD's HEAD, When `cargo check --workspace` runs on RedBaron, Then it exits 0 (baseline: exit 101 on the pre-fix HEAD, receipts already on file from `autobuilder-dryrun-snapshot-git-lock-flake`'s re-verification).",
+      "description": "Given a 3-commit chain where the middle commit is independently non-revert-clean (per the reviewer-agent counter_attack shape: deletes a path the terminal commit re-adds with different content), When rollback-plan runs, Then the middle commit does NOT classify mechanical(chain) and IS counted in blocking_count, while the other chain members retain mechanical(chain) if independently clean.",
       "test": "tests/acceptance_ac1.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same checkout, When `cargo test --workspace --release` runs on RedBaron, Then it exits 0.",
+      "description": "Given the same chain shape with every member independently revert-clean, When rollback-plan runs, Then all members classify mechanical(chain) and blocking_count is unaffected (no regression vs. the terminal-only baseline for the common case).",
       "test": "tests/acceptance_ac2.rs"
-    },
-    {
-      "id": "AC3",
-      "level": "MUST",
-      "description": "Given the same HEAD, When `extend-gate.sh` runs, Then `ci-checks`, `msrv-verify`, and `vti-plan` are absent from `new_blocks`.",
-      "test": "tests/acceptance_ac3.rs"
     }
   ],
   "scope": [
