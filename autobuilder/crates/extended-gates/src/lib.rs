@@ -71,7 +71,11 @@ pub const PRODUCER_SPECS: &[ProducerSpec] = &[
     },
     ProducerSpec {
         name: "hermetic-build",
-        schema: "autobuilder.hermetic_build_receipt.v1",
+        // v2 (PRD-rustbuild-hermetic-scope): new_sockets entries carry
+        // per-socket pid/comm/remote attribution instead of bare strings.
+        // The gate accepts v1 receipts too during the transition — see
+        // autobuilder-gate::RECEIPT_SPECS' hermetic-build entry.
+        schema: "autobuilder.hermetic_build_receipt.v2",
         file_name: "hermetic-build-receipt.json",
         pass_verdicts: &["pass", "skipped"],
     },
@@ -169,9 +173,16 @@ mod table_tests {
                 "schema must start with autobuilder.: {}",
                 spec.schema
             );
+            // Version-agnostic: most producers are still on v1, but
+            // hermetic-build bumped to v2 (PRD-rustbuild-hermetic-scope) —
+            // any `_receipt.v<N>` suffix is well-formed.
+            let ends_with_version = spec
+                .schema
+                .rsplit_once("_receipt.v")
+                .is_some_and(|(_, v)| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit()));
             assert!(
-                spec.schema.ends_with("_receipt.v1"),
-                "schema must end with _receipt.v1: {}",
+                ends_with_version,
+                "schema must end with _receipt.v<N>: {}",
                 spec.schema
             );
             assert!(

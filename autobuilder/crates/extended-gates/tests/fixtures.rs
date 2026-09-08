@@ -97,3 +97,30 @@ pub(crate) fn key_set(value: &Value) -> std::collections::BTreeSet<String> {
         .map(|obj| obj.keys().cloned().collect())
         .unwrap_or_default()
 }
+
+/// The host's own non-loopback IP, found via the standard "UDP connect,
+/// then read `local_addr`" trick: `connect()` on a `SOCK_DGRAM` socket only
+/// consults the routing table to pick a source address and never sends a
+/// packet, so this works even with no route to the internet as long as the
+/// host has *a* default route and a real (non-loopback) interface — true
+/// for a normal workstation/LAN/container network, false only in a fully
+/// isolated netns with just `lo`. Tests using this helper must treat `None`
+/// as "skip, don't fail" so they don't flake in that environment.
+pub(crate) fn local_nonloopback_ip() -> Option<std::net::IpAddr> {
+    let sock = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    sock.connect("1.1.1.1:80").ok()?;
+    sock.local_addr().ok().map(|a| a.ip())
+}
+
+/// A minimal buildable lib crate with no dependencies — `cargo build
+/// --offline` succeeds against it with zero network activity of its own.
+pub(crate) fn scaffold_trivial_lib(project: &Path) {
+    std::fs::create_dir_all(project.join("src")).unwrap();
+    std::fs::write(
+        project.join("Cargo.toml"),
+        b"[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    std::fs::write(project.join("src/lib.rs"), b"pub fn add(a: i32, b: i32) -> i32 { a + b }\n")
+        .unwrap();
+}

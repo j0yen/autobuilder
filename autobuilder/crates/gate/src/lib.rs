@@ -39,7 +39,8 @@ pub struct ReceiptSpec {
     /// Older schema strings also accepted as a match, for a receipt whose
     /// producer bumped its schema version but the gate hasn't dropped
     /// support for on-disk receipts written by the previous version yet
-    /// (PRD-autobuilder-rollback-tag-aware's rollback-plan v1 -> v2).
+    /// (PRD-autobuilder-rollback-tag-aware's rollback-plan v1 -> v2;
+    /// PRD-rustbuild-hermetic-scope's hermetic-build v1 -> v2).
     /// Empty for every receipt with no in-flight transition.
     pub alt_schemas: &'static [&'static str],
     /// True if the receipt's `head_sha` must equal the current HEAD.
@@ -184,8 +185,10 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
     ReceiptSpec {
         name: "hermetic-build",
         file_name: ReceiptPath::Static("hermetic-build-receipt.json"),
-        expected_schema: "autobuilder.hermetic_build_receipt.v1",
-        alt_schemas: &[],
+        expected_schema: "autobuilder.hermetic_build_receipt.v2",
+        // Transition window (PRD-rustbuild-hermetic-scope): a v1 receipt
+        // left on disk from before this ship is still accepted.
+        alt_schemas: &["autobuilder.hermetic_build_receipt.v1"],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },

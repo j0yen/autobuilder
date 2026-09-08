@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.7.1 — 2026-09-08
+
+Closes the two gaps the operator found in v0.7.0's port (PRD-autobuilder-source-unify,
+both operator notes dated 2026-09-08): the gate/producer pair was still on the
+hermetic-build v1 schema, and the extended-gates producers were still on the
+0.1.0 lineage rather than the proven-passing 0.1.1 lineage.
+
+- `crates/gate/src/lib.rs`: `hermetic-build`'s `expected_schema` is now
+  `autobuilder.hermetic_build_receipt.v2` (PRD-rustbuild-hermetic-scope),
+  with `autobuilder.hermetic_build_receipt.v1` accepted as a transition-window
+  `alt_schema` — same pattern already in place for `rollback-plan`'s v1→v2.
+  Ported the transition test `crates/gate/tests/hermetic_scope_ac6_v1_transition.rs`
+  from rustbuild's autobuilder unchanged.
+- `crates/extended-gates` bumps `0.1.0` → `0.1.1`, porting every producer
+  delta from `~/wintermute/rustbuild/autobuilder`'s 0.1.1 lineage (proven
+  passing mcphost's gate at b2655fe 2026-09-08, where this crate's 0.1.0
+  producers blocked at cf62c92 on determinism/hermetic-build/msrv-verify/
+  ac-traceability/flake-audit):
+  - `determinism` and `cold-build-time`: both `cargo clean` invocations now
+    redirect `CARGO_TARGET_DIR` to an isolated tempdir instead of the
+    project's own `target/`. Previously `cargo clean` on the project's real
+    target dir wiped `target/autobuilder/receipts/` — every other
+    producer's already-written receipt — mid-run, which is what made
+    unrelated receipts (msrv-verify, ac-traceability, flake-audit) read as
+    missing downstream of determinism in producer order.
+  - `hermetic-build`: rewritten producer + `--strict` CLI flag
+    (PRD-rustbuild-hermetic-scope) — per-socket pid/comm/remote attribution
+    instead of bare-string `new_sockets` entries, writes schema v2.
+  - `ac-traceability`: `locate_prd` now falls back to the project's parent
+    directory for a nested-crate layout (`--project-root autobuilder`);
+    AC-id extraction now also parses numbered `## Acceptance criteria`
+    lines (`1. P0 — Given …`), not just `AC<N>`-token form, and accepts
+    ac-judge's `tests/ac<N>_*.rs` / `tests/ac<0N>_*.rs` file-naming as
+    coverage pairing.
+  - `secrets-scan`: optional `extended-gates.toml::secrets_scan_allowlist`
+    (path-glob array) to skip planted-fixture files during self-hosted runs.
+  - `mutation-kill`: comment/string-aware candidate-site scanner (skips
+    mutation sites inside comments and string/char literals, which would
+    misreport as surviving mutants) trying up to 5 sites per operator.
+  Ported test files: `acceptance_ac_traceability.rs`,
+  `acceptance_ac_x1_helps.rs`, `acceptance_heavy_ignored.rs`,
+  `acceptance_secrets_scan_control.rs` (new), `fixtures.rs`, and the eight
+  `hermetic_scope_ac{1,2,3,4,5,7,8}_*.rs` fixture tests (AC6 lives in the
+  gate crate, above).
+- Both parents' rollback lineages plus every ported hermetic/producer test
+  pass together in one `cargo test --workspace` at the nested root.
+
 ## v0.7.0 — 2026-09-07
 
 Unifies this crate with `~/wintermute/rustbuild/autobuilder` (PRD-autobuilder-source-unify):
