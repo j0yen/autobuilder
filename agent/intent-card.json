@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-dryrun-snapshot-git-lock-flake.md",
-  "intent_slug": "autobuilder-dryrun-snapshot-git-lock-flake",
-  "root_motivation": "PRD-fleet-ci-green's build tick diagnosed both flakes today and had to spend an AC-verification cycle re-running the test to prove each one was infrastructure noise rather than a real dry-run regression (see `~/brain/journal/build/2026-09-07.md`, `fleet-ci-green` entries around 18:43 and the AC2/AC3 write-up). The same test will flake again on any future CI run where git's auto-maintenance daemon happens to touch `.git/objects/maintenance.lock` (or a sibling `*.lock` file under `.git/objects` or `.git/refs`) during the snapshot window. Left alone, this either costs a re-run cycle every time it recurs, or \u2014 worse \u2014 trains whoever reads the CI history to assume `ac2_dry_run_no_writes_no_network` failures are always noise, which would mask a real dry-run mutation bug the day one actually appears.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-source-unify.md",
+  "intent_slug": "autobuilder-source-unify",
+  "root_motivation": "Joe's fleet routes rollback-plan PRDs to whichever repo a drafter names, and both repos accept them \u2014 so features land in different sources and the installed `~/.local/bin/autobuilder` matches neither. The measured consequence on 2026-09-07: mcphost's rollback receipt showed 26 blocking commits under the old model for hours after two shipped PRDs (one per repo) had each individually \"fixed\" it, and the discrepancy was only caught because an operator diffed the receipt against the marker file by hand. Until there is one source and an install-freshness check, every future rollback (or any autobuilder) feature can ship green in its repo and never reach a gate.",
   "user_persona": "The autobuilder skill orchestrator (a Claude session) and the human invoking `/autobuilder` from their own project. Both shell out to this binary for the receipt + gate steps that must not live in bash.",
   "unfakeable_metric": {
     "name": "stage4_receipt_producers_callable",
@@ -14,20 +14,38 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the snapshot helper, When a `.git/objects/maintenance.lock` file is created between the pre- and post- snapshot calls in a test, Then the comparator does not flag it as a mutation.",
+      "description": "Given the unified crate, When both parents' rollback test suites run in it, Then all pass in one `cargo test --workspace` at the nested root.",
       "test": "tests/acceptance_ac1.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same helper, When a real (non-`.git`) project file is added, removed, or modified between snapshots, Then the comparator still flags it \u2014 the exclusion is scoped to `.git/**/*.lock` and `.git/**/*.pid`, not a blanket ignore.",
+      "description": "Given a fixture repo with agent/deploy-manifest.toml, When the unified binary's rollback-plan runs, Then the model resolves RedeployTag and the verdict follows tag lineage, not per-commit reverts.",
       "test": "tests/acceptance_ac2.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `cargo test --workspace` on RedBaron, When run 5 times back to back, Then `ac2_dry_run_no_writes_no_network` passes all 5 times (baseline: flaked at least twice today under real CI conditions).",
+      "description": "Given a fixture repo with a mechanical-commit chain and no marker, When rollback-plan runs, Then the mechanical classification from v0.3.0 still applies.",
       "test": "tests/acceptance_ac3.rs"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "Given an installed binary older than the canonical crate version, When extend-gate.sh starts, Then it exits with the documented stale-binary code and a message naming installed version, expected version, and the install command, before any producer runs.",
+      "test": "tests/acceptance_ac4.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given the unified binary installed on RedBaron, When the full mcphost gate runs at HEAD, Then rollback-plan passes under redeploy-tag and the delta verdict carries no new blocks.",
+      "test": "tests/acceptance_ac5.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "SHOULD",
+      "description": "Given build-contract.md, When a drafter reads the autobuilder routing note, Then it names the canonical build_into and marks the frozen path invalid for new PRDs.",
+      "test": "tests/acceptance_ac6.rs"
     }
   ],
   "scope": [
