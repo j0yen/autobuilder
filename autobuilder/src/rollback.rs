@@ -14,6 +14,11 @@
 //!   verdict instead depends on the base tag existing, the v-tag lineage
 //!   from base to HEAD being contiguous, and HEAD being tagged or taggable.
 //!   Merge commits and non-revert-clean commits never affect this verdict.
+//!   Exception (PRD-autobuilder-rollback-tag-lineage-head-gap): an untagged
+//!   entry whose commit is HEAD itself is not a lineage gap — it's the
+//!   ordinary shape right after a version bump, before `ship-tag.sh` has
+//!   tagged a passing gate — and is left to the existing HEAD tagged/
+//!   taggable/blocked check below instead of blocking on `tag-lineage-gap`.
 //!
 //! Emits `target/autobuilder/rollback.md` (human-readable) and
 //! `target/autobuilder/receipts/rollback-plan.json` (the gate receipt,
@@ -787,7 +792,15 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
     let previous_tag = base_tag.clone().unwrap_or_else(|| base_ref.clone());
 
     let lineage = walk_tag_lineage(project, &base_sha)?;
-    if let Some(gap) = lineage.iter().find(|e| e.tag.is_none()) {
+    // PRD-autobuilder-rollback-tag-lineage-head-gap: an untagged entry whose
+    // commit *is* HEAD is the ordinary shape right after a version bump,
+    // before `ship-tag.sh` has had a chance to tag a passing gate — it is
+    // not a gap, it's the same case `head_tag_status` below already forgives
+    // via `Taggable`/`head-untagged`. Only an untagged entry that is NOT
+    // HEAD (a stale, superseded bump nothing will ever tag) is a genuine
+    // lineage gap. Since HEAD is the newest commit in the walk, excluding it
+    // here still finds the earliest real gap first, unchanged from before.
+    if let Some(gap) = lineage.iter().find(|e| e.tag.is_none() && e.commit_sha != head_sha) {
         let base = BaseInfo {
             git_ref: &base_ref,
             sha: &base_sha,
