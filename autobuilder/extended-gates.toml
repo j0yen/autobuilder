@@ -1,0 +1,18 @@
+# Config for the autobuilder crate's extended-gates producers (Stage 4).
+# Read relative to the resolved Cargo project root (`autobuilder/`, per
+# extend-gate.sh's nested-crate-project resolution — see
+# PRD-build-extend-gate-nested-crate-project) — NOT the repo root.
+#
+# secrets_scan_allowlist: path-glob list (relative to this file's own
+# directory, i.e. `autobuilder/`) that `secrets-scan` skips before
+# pattern-matching. Used here to allowlist this crate's own planted-secret
+# acceptance test fixture, which embeds a synthetic AKIA-shaped literal in
+# its own source to prove the scanner catches real secrets — without this,
+# the real repo-wide scan re-finds that literal and blocks on its own test.
+# Mirrors rustbuild's own autobuilder/extended-gates.toml
+# (PRD-autobuilder-secrets-scan-allowlist, ported into this repo's vendored
+# extended-gates crate at v0.7.1 / commit 54ab8f7). See
+# PRD-autobuilder-gate-debt AC3.
+secrets_scan_allowlist = [
+  "crates/extended-gates/tests/acceptance_secrets_scan_planted.rs",
+]

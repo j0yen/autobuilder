@@ -15,10 +15,11 @@ required_commands = [
 
 [[lane]]
 id = "extended-gates-rust"
-description = "Behavior changes in the vendored extended-gates crate (17 receipt-producer bins under src/bin/** dispatching to src/producers/**, plus src/lib.rs and its acceptance tests) — previously unrouted, surfaced when the v0.7.1 extended-gates 0.1.1 port (commit 54ab8f7) added new producer/bin source files absent from proof-lanes.toml, dropping vti-plan's routing confidence (PRD-autobuilder-gate-debt)"
+description = "Behavior changes in the vendored extended-gates crate (17 receipt-producer bins under src/bin/** dispatching to src/producers/**, plus src/lib.rs and its acceptance tests), plus its own extended-gates.toml config — previously unrouted, surfaced when the v0.7.1 extended-gates 0.1.1 port (commit 54ab8f7) added new producer/bin source files absent from proof-lanes.toml, dropping vti-plan's routing confidence, and again when this PRD added autobuilder/extended-gates.toml for the secrets-scan allowlist (PRD-autobuilder-gate-debt, mirroring rustbuild's identical lane)"
 globs = [
   "autobuilder/crates/extended-gates/src/**/*.rs",
   "autobuilder/crates/extended-gates/tests/**/*.rs",
+  "autobuilder/extended-gates.toml",
 ]
 required_commands = [
   "cd autobuilder && cargo check --workspace",
