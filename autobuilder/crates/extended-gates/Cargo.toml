@@ -1,6 +1,6 @@
 [package]
 name = "autobuilder-extended-gates"
-version = "0.1.0"
+version = "0.1.1"
 description = "17 receipt producers extending the autobuilder risk gate from 8 to 25 receipts: supply-chain, reproducibility, performance, API contract, test quality, and campaign roll-up."
 edition.workspace = true
 rust-version.workspace = true

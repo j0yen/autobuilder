@@ -1,6 +1,6 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-source-unify.md",
+  "prd_source": "/home/jsy/repos/PRDs/build-queue/PRD-autobuilder-source-unify.md",
   "intent_slug": "autobuilder-source-unify",
   "root_motivation": "Joe's fleet routes rollback-plan PRDs to whichever repo a drafter names, and both repos accept them \u2014 so features land in different sources and the installed `~/.local/bin/autobuilder` matches neither. The measured consequence on 2026-09-07: mcphost's rollback receipt showed 26 blocking commits under the old model for hours after two shipped PRDs (one per repo) had each individually \"fixed\" it, and the discrepancy was only caught because an operator diffed the receipt against the marker file by hand. Until there is one source and an install-freshness check, every future rollback (or any autobuilder) feature can ship green in its repo and never reach a gate.",
   "user_persona": "The autobuilder skill orchestrator (a Claude session) and the human invoking `/autobuilder` from their own project. Both shell out to this binary for the receipt + gate steps that must not live in bash.",

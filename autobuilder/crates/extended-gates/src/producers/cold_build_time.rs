@@ -3,6 +3,14 @@
 //! Budget comes from `extended-gates.toml::cold_build_time_max_seconds`
 //! (default: 600). Producer runs `cargo clean` + `cargo build --release`
 //! and times the build wall-clock.
+//!
+//! Both cargo invocations run with `CARGO_TARGET_DIR` pointed at a fresh
+//! temp directory rather than the project's own `target/`: `cargo clean`
+//! deletes everything under the target dir it's pointed at, and if that
+//! were the project's real `target/` it would wipe
+//! `target/autobuilder/receipts/` (every other producer's receipt) along
+//! with the build artifacts. The project tree itself is never copied — only
+//! the target dir is redirected.
 
 use std::path::Path;
 use std::process::Command;
@@ -66,15 +74,21 @@ pub fn run(spec: &ProducerSpec, project: &Path) -> Result<String> {
         return Ok("cold-build-time: skipped (AUTOBUILDER_SKIP_HEAVY)".into());
     }
     let max_seconds = load_budget(project);
+
+    let target_dir = tempfile::tempdir().context("create isolated CARGO_TARGET_DIR")?;
+    let target_dir = target_dir.path();
+
     let _ = Command::new("cargo")
         .arg("clean")
         .current_dir(project)
+        .env("CARGO_TARGET_DIR", target_dir)
         .status();
 
     let start = Instant::now();
     let status = Command::new("cargo")
         .args(["build", "--release"])
         .current_dir(project)
+        .env("CARGO_TARGET_DIR", target_dir)
         .status()
         .context("spawn cargo build --release")?;
     let elapsed = start.elapsed().as_secs_f64();

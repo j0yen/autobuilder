@@ -2,6 +2,13 @@
 //!
 //! Pure-Rust. Invokes `cargo` twice with `cargo clean` between runs, sha256s
 //! the artifact set, and compares. Cross-platform via the toolchain.
+//!
+//! Both invocations run with `CARGO_TARGET_DIR` pointed at a fresh temp
+//! directory rather than the project's own `target/`: `cargo clean` deletes
+//! everything under the target dir it's pointed at, and if that were the
+//! project's real `target/` it would wipe `target/autobuilder/receipts/`
+//! (every other producer's receipt) along with the build artifacts. The
+//! project tree itself is never copied — only the target dir is redirected.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -32,11 +39,12 @@ fn sha256_file(path: &Path) -> Result<String> {
     Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
-fn cargo(project: &Path, args: &[&str]) -> Result<()> {
+fn cargo(project: &Path, target_dir: &Path, args: &[&str]) -> Result<()> {
     let status = Command::new("cargo")
         .arg("-q")
         .args(args)
         .current_dir(project)
+        .env("CARGO_TARGET_DIR", target_dir)
         .status()
         .with_context(|| format!("spawn cargo {args:?}"))?;
     if !status.success() {
@@ -45,8 +53,8 @@ fn cargo(project: &Path, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-fn collect_release_bins(project: &Path) -> Vec<PathBuf> {
-    let release_dir = project.join("target/release");
+fn collect_release_bins(target_dir: &Path) -> Vec<PathBuf> {
+    let release_dir = target_dir.join("release");
     let Ok(rd) = std::fs::read_dir(&release_dir) else {
         return Vec::new();
     };
@@ -79,22 +87,25 @@ pub fn run(spec: &ProducerSpec, project: &Path) -> Result<String> {
         return Ok("determinism: skipped (AUTOBUILDER_SKIP_HEAVY)".into());
     }
 
-    cargo(project, &["clean"])?;
-    cargo(project, &["build", "--release"])?;
+    let target_dir = tempfile::tempdir().context("create isolated CARGO_TARGET_DIR")?;
+    let target_dir = target_dir.path();
+
+    cargo(project, target_dir, &["clean"])?;
+    cargo(project, target_dir, &["build", "--release"])?;
     let mut run_a: Vec<(PathBuf, String)> = Vec::new();
-    for p in collect_release_bins(project) {
+    for p in collect_release_bins(target_dir) {
         let d = sha256_file(&p)?;
         run_a.push((p, d));
     }
 
-    cargo(project, &["clean"])?;
-    cargo(project, &["build", "--release"])?;
+    cargo(project, target_dir, &["clean"])?;
+    cargo(project, target_dir, &["build", "--release"])?;
     let mut artifacts: Vec<Artifact> = Vec::new();
     let mut mismatched: Vec<String> = Vec::new();
     for (p, da) in run_a {
         let db = sha256_file(&p).unwrap_or_default();
         let rel = p
-            .strip_prefix(project)
+            .strip_prefix(target_dir)
             .unwrap_or(&p)
             .to_string_lossy()
             .into_owned();
