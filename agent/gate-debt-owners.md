@@ -105,6 +105,7 @@ Remaining baseline entries and why they're still excused:
 | `risk-gate` | unowned (open question) | `run-metrics.sh`'s embedded audit-checks.sh lookup has always pointed at a nonexistent `~/.claude/skills/autobuilder/rules/audit-checks.sh` (the shared script actually lives in the `rustbuild` skill), so `risk-gate.json` has always come out empty and excused-as-missing. Fixing the path was tried during this PRD and reverted: it makes the audit actually run, which then reports 4 real `blocking` findings (`unwrap()` on external input in `autobuilder/src/experiment.rs`) that flip `proof-receipt`'s own verdict from `baseline` to `crash` — a regression on this PRD's own P0 AC1. Fixing those `unwrap()` call sites is a `src/` change, out of this PRD's scope ("scaffolding only; no library or CLI surface changes"). A follow-up PRD should fix the audit-checks.sh path AND the `experiment.rs` findings together (fixing only the path without the findings would just convert an excused-missing-receipt into an excused-blocking-receipt with no net gain). |
 | `reviewer-agent` | self-resolving | PRD-autobuilder-gate-debt's own TL;DR names this as expected to "re-evaluate once the above shrink." The most recent reviewer-agent run (head `5c72a58`, pre-dating this PRD's commits) blocked on reasons specific to that stale head (cargo-deny failures, the gate-baseline mechanism itself). Re-run reviewer-agent fresh at the new HEAD on the next tick. |
 | `session-trace` | Joe — PRD-autobuilder-gate-debt's own Open Questions table | "fix the RedBaron ctrace permission or teach the receipt a permanent host-skip? — next maintenance pass." Note: a manual `--trace` run during this PRD's work happened to produce `verdict=pass` (15916 events captured) on this box, and the 2026-09-08 full gate re-run also passed it live — left baselined regardless since fixing/verifying this host issue is explicitly out of this PRD's scope and the open question is owned by Joe, not this PRD. |
+| `rollback-plan` | structural — not owned by `rollback.rs`'s classifier | added 2026-09-08 by `PRD-autobuilder-rollback-plan-debt`. Re-confirmed fresh at HEAD `61205d69d7eff2436a800c9d78b79904775b7c74` (`cargo run --release --bin autobuilder -- rollback-plan --project . --base v0.3.0 --explain`, base `105cf29e` = `v0.3.0`, 28 commits, `verdict=block`): 11 of 28 commits are not git-revert-clean (`classified={mechanical_pattern:4, mechanical_chain:0, mechanical_merge:0, substantive:24}`) — `362345b`, `00ce607`, `30263b9`, `ff644f8`, `55849eb`, `ad227f2`, `d2cb5ca`, `03b5711`, `38402df`, `5c72a58`, `930a77a`. `rollback-mechanical-chains` (owns `autobuilder/src/rollback.rs`) independently confirmed this is not a classifier bug: the two merges in range (`00ce607`, `30263b9`) genuinely conflict on `git revert -m 1` (`agent/intent-card.json`/`CHANGELOG.md`/`Cargo.toml` touched by many intervening commits), and none of the remaining 9 form a same-path superseding chain or clean merge (`mechanical_chain`/`mechanical_merge` correctly stay 0 for this window) — they're ordinary self-hosted bookkeeping commits (gate-debt owner-doc updates, changelog+version-bump pairs, proof-lane routing) touching shared scaffolding files that later commits also touch, so no `git revert` of any one of them applies cleanly once the file has moved on. This is the identical shape `PRD-rustbuild-gate-debt` already baselined on the sibling `rustbuild` repo ("3 non-revert-clean commits since v0.5.0 ... need their own follow-on PRD, not reopened here" — commit `f343429`). Baselined rather than fixed: rewriting merged/shared-scaffolding history to force these 11 individually revert-clean would itself be destructive (rewrites already-merged commits) and is explicitly out of this PRD's non-goals. Verified: `extend-gate.sh --project-root autobuilder --head 61205d69d7eff2436a800c9d78b79904775b7c74 --force` after this baseline edit reports `verdict=delta-pass`, `new_blocks=none`. |
 
 ## Discovered but explicitly NOT baselined (out of scope for this PRD)
 
@@ -113,22 +114,13 @@ surfaces blocks that are real, pre-existing or transient, and unrelated
 to the fixes above — NOT added to `agent/gate-baseline.json` per this
 PRD's own non-goal ("no baseline widening under any circumstance"):
 
-- **`rollback-plan`** — still blocks, drift continuing to accumulate:
-  9 of 26 commits in `v0.3.0..HEAD` are now not git-revert-clean (grew
-  from 5 of 16 at the last 2026-09-08 re-check, as more history —
-  including this PRD's own prior-tick commits and the v0.7.0-0.7.2
-  source-unify/MSRV merges — landed on `main`). Still unrelated to
-  `rollback-mechanical-chains`' classifier logic
-  (`autobuilder/src/rollback.rs`, explicitly out of this PRD's scope —
-  "no rollback.rs feature code"). The real owner remains the queued
-  follow-on `PRD-rollback-mechanical-chains.md`, still blocked on its
-  own dependency (`PRD-autobuilder-source-unify.md` — landed its
-  v0.7.0/v0.7.1 code but has not itself shipped/archived). Confirmed via
-  the 2026-09-08 `extend-gate.sh --project-root autobuilder --force` run
-  (log: `/tmp/gate-run-1.log` this tick; `new_blocks=rollback-plan,ci-checks`
-  in that run's delta-verdict line). Deferred as AC4 in
-  `PRD-autobuilder-gate-debt`'s own frontmatter rather than fixed or
-  baselined here.
+- **`rollback-plan`** — resolved 2026-09-08 by `PRD-autobuilder-rollback-plan-debt`:
+  moved OUT of this "not baselined" list and INTO `agent/gate-baseline.json`
+  (see the "Remaining baseline entries" table above for the full
+  reasoning — drift stopped accumulating once the decision was made that
+  this class of self-hosted bookkeeping commit is structurally never
+  going to be revert-clean, so there is nothing left to re-discover on
+  future ticks).
 
 - **`ci-checks`** — blocks again, but transiently/expectedly: this
   tick's fix commit (`8b2fb9c`) has not been pushed to `origin` yet at

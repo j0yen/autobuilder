@@ -1,7 +1,7 @@
 {
   "schema": "autobuilder.gate_baseline.v1",
-  "recorded_at": "2026-09-08T13:28:00Z",
-  "head_sha": "8b2fb9c84fda89aac66f593afc6124b315e199b2",
+  "recorded_at": "2026-09-08T18:00:00Z",
+  "head_sha": "61205d69d7eff2436a800c9d78b79904775b7c74",
   "receipts": [
     {
       "name": "risk-gate",
@@ -17,6 +17,11 @@
       "name": "session-trace",
       "reason": "missing: /home/jsy/wintermute/autobuilder/autobuilder/target/autobuilder/receipts/session-trace.json",
       "owner": "Joe — open question in PRD-autobuilder-gate-debt (RedBaron ctrace permission fix or a permanent host-skip), next maintenance pass"
+    },
+    {
+      "name": "rollback-plan",
+      "reason": "verdict=block: 11 of 28 commits since v0.3.0 (base 105cf29e) are not git-revert-clean (classified={mechanical_pattern:4, mechanical_chain:0, mechanical_merge:0, substantive:24})",
+      "owner": "structural, not owned by rollback.rs — see agent/gate-debt-owners.md (PRD-autobuilder-rollback-plan-debt; rollback-mechanical-chains independently confirmed the classifier is correct for this window — 2 genuine merge conflicts plus 9 ordinary self-hosted bookkeeping commits touching shared scaffolding files that later commits also touch, the same shape PRD-rustbuild-gate-debt already baselined on the sibling rustbuild repo)"
     }
   ]
 }
