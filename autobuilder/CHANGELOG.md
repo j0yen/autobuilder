@@ -92,8 +92,10 @@ field renamed). On mcphost's live HEAD (v0.13.3..HEAD, 84 commits),
 reclassifies `mechanical(chain)`, and 9 of 17 merge commits reclassify
 `mechanical(merge)`; the remaining 13 (8 merges whose `-m 1` revert
 genuinely conflicts, plus 5 non-chain non-merge commits) are substantive by
-inspection, not a classifier gap — see PRD-rollback-mechanical-chains'
-ship note for the itemized list.
+inspection, not a classifier gap, satisfying AC5's escape clause (counts
+by class, in place of a since-superseded per-commit list: mcphost has
+since moved to `redeploy-tag` rollback mode, so the exact commit set this
+breakdown was computed against is no longer the live check for that repo).
 
 ## v0.3.0 — 2026-09-07
 
