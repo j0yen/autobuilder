@@ -56,7 +56,7 @@ fn ac_x3_every_extended_gate_spec_maps_to_a_producer() {
         "autobuilder.iteration_receipt.v1",
         "autobuilder.bad_rust_audit.v1",
         "autobuilder.reviewer_agent_receipt.v1",
-        "autobuilder.rollback_plan_receipt.v1",
+        "autobuilder.rollback_plan_receipt.v2",
         "autobuilder.ci_checks_receipt.v1",
         "autobuilder.session_trace_receipt.v1",
     ];

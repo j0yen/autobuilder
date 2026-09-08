@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.7.0 — 2026-09-07
+
+Unifies this crate with `~/wintermute/rustbuild/autobuilder` (PRD-autobuilder-source-unify):
+ports the v0.4.0→v0.6.1 rollback deltas from that repo — the `RedeployTag`
+rollback model, `agent/intent-card.json` / `agent/AUTOBUILDER_PROGRAM.md` /
+`agent/deploy-manifest.toml` model resolution, and the tag-lineage verdict
+(`redeploy-tag` mode: pass iff the base tag exists, the v-tag lineage from
+base to HEAD is contiguous, and HEAD is tagged or taggable) — into this
+crate's `rollback.rs`, alongside the mechanical-commit classification
+already here. `revert-commits` mode (the default) is unchanged behaviorally
+and keeps `mechanical(pattern)`/`mechanical(chain)`/`mechanical(merge)`
+classification; `redeploy-tag` mode is opt-in per crate and never runs the
+mechanical classifier. The receipt schema bumps to
+`autobuilder.rollback_plan_receipt.v2` (both parents' fields are disjoint
+and both now ship in one document); `v1` receipts are still accepted by
+the gate during the transition. This version (≥0.7.0) is deliberately
+higher than either parent crate's, so "the canonical install" is checkable
+by version number alone. `~/wintermute/rustbuild/autobuilder` is now
+frozen/ported-from (see its `PORTED.md`) — new autobuilder feature PRDs
+target this crate (`~/wintermute/autobuilder`, `--project-root autobuilder`)
+only.
+
 ## v0.4.1 — 2026-09-07
 
 `tests/publish.rs`'s `ac2_dry_run_no_writes_no_network` test snapshots every file under a test project tree before and after a dry-run publish, then asserts the two snapshots are identical. Twice today (autobuilder CI run 34148731828, rustbuild CI run 34151347561 exercising the same test via a shared code path) the assertion failed only because `.git/objects/maintenance.lock` transiently appeared or disappeared between snapshots — a file git's own background maintenance creates and removes, unrelated to anything the publish dry-run code does. Both failures reproduced as clean passes on immediate local re-run. This PRD makes the snapshot comparator ignore git-internal lock files so the test stops flaking.

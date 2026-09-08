@@ -32,8 +32,16 @@ pub struct ReceiptSpec {
     pub name: &'static str,
     /// How to compute the on-disk filename inside `receipts/`.
     pub file_name: ReceiptPath,
-    /// The `"schema"` field the receipt JSON must declare verbatim.
+    /// The `"schema"` field the receipt JSON must declare verbatim. This is
+    /// the *canonical* (current) schema; see [`ReceiptSpec::alt_schemas`]
+    /// for older versions still accepted during a transition.
     pub expected_schema: &'static str,
+    /// Older schema strings also accepted as a match, for a receipt whose
+    /// producer bumped its schema version but the gate hasn't dropped
+    /// support for on-disk receipts written by the previous version yet
+    /// (PRD-autobuilder-rollback-tag-aware's rollback-plan v1 -> v2).
+    /// Empty for every receipt with no in-flight transition.
+    pub alt_schemas: &'static [&'static str],
     /// True if the receipt's `head_sha` must equal the current HEAD.
     pub requires_head_match: bool,
     /// Verdict strings that count as passing. Empty means "presence + schema
@@ -57,6 +65,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "intake",
         file_name: ReceiptPath::Static("intake.json"),
         expected_schema: "autobuilder.intent_card.v1",
+        alt_schemas: &[],
         requires_head_match: false,
         pass_verdicts: &[],
     },
@@ -64,6 +73,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "vti-plan",
         file_name: ReceiptPath::Static("vti-plan.json"),
         expected_schema: "autobuilder.vti_plan_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass"],
     },
@@ -71,6 +81,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "proof-receipt",
         file_name: ReceiptPath::HeadShaJson,
         expected_schema: "autobuilder.iteration_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["baseline", "advance"],
     },
@@ -78,6 +89,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "risk-gate",
         file_name: ReceiptPath::Static("risk-gate.json"),
         expected_schema: "autobuilder.bad_rust_audit.v1",
+        alt_schemas: &[],
         requires_head_match: false,
         pass_verdicts: &[],
     },
@@ -85,13 +97,17 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "reviewer-agent",
         file_name: ReceiptPath::Static("reviewer-agent.json"),
         expected_schema: "autobuilder.reviewer_agent_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "concern"],
     },
     ReceiptSpec {
         name: "rollback-plan",
         file_name: ReceiptPath::Static("rollback-plan.json"),
-        expected_schema: "autobuilder.rollback_plan_receipt.v1",
+        expected_schema: "autobuilder.rollback_plan_receipt.v2",
+        // Transition window (PRD-autobuilder-rollback-tag-aware): a v1
+        // receipt left on disk from before this ship is still accepted.
+        alt_schemas: &["autobuilder.rollback_plan_receipt.v1"],
         requires_head_match: true,
         pass_verdicts: &["pass"],
     },
@@ -99,6 +115,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "ci-checks",
         file_name: ReceiptPath::Static("ci-checks.json"),
         expected_schema: "autobuilder.ci_checks_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         // `pass` = workflow runs found on HEAD, all conclusion=success.
         // `skipped` = the project has no GitHub remote configured (typical
@@ -111,6 +128,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "session-trace",
         file_name: ReceiptPath::Static("session-trace.json"),
         expected_schema: "autobuilder.session_trace_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         // `pass` = trace ran, no constraint violations.
         // `skipped` = tracer unavailable on the host; receipt still present
@@ -127,6 +145,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "supply-audit",
         file_name: ReceiptPath::Static("supply-audit-receipt.json"),
         expected_schema: "autobuilder.supply_audit_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass"],
     },
@@ -134,6 +153,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "license-audit",
         file_name: ReceiptPath::Static("license-audit-receipt.json"),
         expected_schema: "autobuilder.license_audit_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass"],
     },
@@ -141,6 +161,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "secrets-scan",
         file_name: ReceiptPath::Static("secrets-scan-receipt.json"),
         expected_schema: "autobuilder.secrets_scan_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass"],
     },
@@ -148,6 +169,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "sbom",
         file_name: ReceiptPath::Static("sbom-receipt.json"),
         expected_schema: "autobuilder.sbom_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass"],
     },
@@ -155,6 +177,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "determinism",
         file_name: ReceiptPath::Static("determinism-receipt.json"),
         expected_schema: "autobuilder.determinism_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -162,6 +185,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "hermetic-build",
         file_name: ReceiptPath::Static("hermetic-build-receipt.json"),
         expected_schema: "autobuilder.hermetic_build_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -169,6 +193,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "msrv-verify",
         file_name: ReceiptPath::Static("msrv-verify-receipt.json"),
         expected_schema: "autobuilder.msrv_verify_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -176,6 +201,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "binary-size",
         file_name: ReceiptPath::Static("binary-size-receipt.json"),
         expected_schema: "autobuilder.binary_size_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -183,6 +209,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "cold-build-time",
         file_name: ReceiptPath::Static("cold-build-time-receipt.json"),
         expected_schema: "autobuilder.cold_build_time_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -190,6 +217,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "bench-delta",
         file_name: ReceiptPath::Static("bench-delta-receipt.json"),
         expected_schema: "autobuilder.bench_delta_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -197,6 +225,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "semver-check",
         file_name: ReceiptPath::Static("semver-check-receipt.json"),
         expected_schema: "autobuilder.semver_check_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -204,6 +233,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "cli-surface",
         file_name: ReceiptPath::Static("cli-surface-receipt.json"),
         expected_schema: "autobuilder.cli_surface_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -211,6 +241,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "schema-compat",
         file_name: ReceiptPath::Static("schema-compat-receipt.json"),
         expected_schema: "autobuilder.schema_compat_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -218,6 +249,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "ac-traceability",
         file_name: ReceiptPath::Static("ac-traceability-receipt.json"),
         expected_schema: "autobuilder.ac_traceability_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass"],
     },
@@ -225,6 +257,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "mutation-kill",
         file_name: ReceiptPath::Static("mutation-kill-receipt.json"),
         expected_schema: "autobuilder.mutation_kill_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -232,6 +265,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "flake-audit",
         file_name: ReceiptPath::Static("flake-audit-receipt.json"),
         expected_schema: "autobuilder.flake_audit_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -240,6 +274,7 @@ pub const RECEIPT_SPECS: &[ReceiptSpec] = &[
         name: "experiment",
         file_name: ReceiptPath::Static("experiment-receipt.json"),
         expected_schema: "autobuilder.experiment_receipt.v1",
+        alt_schemas: &[],
         requires_head_match: true,
         pass_verdicts: &["pass", "skipped"],
     },
@@ -259,7 +294,8 @@ pub struct ReceiptCheck {
     pub schema_expected: &'static str,
     /// The schema string observed in the receipt JSON, if any.
     pub schema_observed: Option<String>,
-    /// True iff `schema_observed == Some(schema_expected)`.
+    /// True iff `schema_observed` equals `schema_expected` or one of
+    /// `alt_schemas` (transition-window versions).
     pub schema_match: bool,
     /// True if the spec required `head_sha` to match HEAD.
     pub head_sha_required: bool,
@@ -332,11 +368,13 @@ pub fn check_receipt_value(
 
     if let Some(s) = value.get("schema").and_then(serde_json::Value::as_str) {
         check.schema_observed = Some(s.to_owned());
-        check.schema_match = s == spec.expected_schema;
+        // Accept the canonical schema or any listed transition-window
+        // alt_schema (e.g. rollback-plan's v1 while v2 rolls out).
+        check.schema_match = s == spec.expected_schema || spec.alt_schemas.contains(&s);
         if !check.schema_match {
             check.notes.push(format!(
-                "schema mismatch: expected {} got {s}",
-                spec.expected_schema
+                "schema mismatch: expected {} (or {:?}) got {s}",
+                spec.expected_schema, spec.alt_schemas
             ));
         }
     } else {
