@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/repos/PRDs/build-queue/PRD-autobuilder-source-unify.md",
-  "intent_slug": "autobuilder-source-unify",
-  "root_motivation": "Joe's fleet routes rollback-plan PRDs to whichever repo a drafter names, and both repos accept them \u2014 so features land in different sources and the installed `~/.local/bin/autobuilder` matches neither. The measured consequence on 2026-09-07: mcphost's rollback receipt showed 26 blocking commits under the old model for hours after two shipped PRDs (one per repo) had each individually \"fixed\" it, and the discrepancy was only caught because an operator diffed the receipt against the marker file by hand. Until there is one source and an install-freshness check, every future rollback (or any autobuilder) feature can ship green in its repo and never reach a gate.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-msrv-icu-idna-toolchain.md",
+  "intent_slug": "autobuilder-msrv-icu-idna-toolchain",
+  "root_motivation": "Two sibling PRDs (`autobuilder-dryrun-snapshot-git-lock-flake`, `autobuilder-gate-debt`) are both blocked at `gate-red` on this same MSRV mismatch, neither is scoped to fix it (one is a test-only comparator fix, the other explicitly excludes rollback/toolchain changes from its Engineering target), and a third (`rollback-mechanical-chains`) sits behind `autobuilder-source-unify` \u2014 the very merge that introduced the break \u2014 with no PRD yet targeting the toolchain pin itself. Left alone, every future tick against `~/wintermute/autobuilder` fails `cargo check --workspace` before it can even run tests, and the fleet's 1.85-pinned/1.88-pinned split means this keeps resurfacing anywhere a transitive dep bump lands on a still-1.85 repo.",
   "user_persona": "The autobuilder skill orchestrator (a Claude session) and the human invoking `/autobuilder` from their own project. Both shell out to this binary for the receipt + gate steps that must not live in bash.",
   "unfakeable_metric": {
     "name": "stage4_receipt_producers_callable",
@@ -14,38 +14,20 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the unified crate, When both parents' rollback test suites run in it, Then all pass in one `cargo test --workspace` at the nested root.",
+      "description": "Given a clean checkout of `~/wintermute/autobuilder/autobuilder` at this PRD's HEAD, When `cargo check --workspace` runs on RedBaron, Then it exits 0 (baseline: exit 101 on the pre-fix HEAD, receipts already on file from `autobuilder-dryrun-snapshot-git-lock-flake`'s re-verification).",
       "test": "tests/acceptance_ac1.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a fixture repo with agent/deploy-manifest.toml, When the unified binary's rollback-plan runs, Then the model resolves RedeployTag and the verdict follows tag lineage, not per-commit reverts.",
+      "description": "Given the same checkout, When `cargo test --workspace --release` runs on RedBaron, Then it exits 0.",
       "test": "tests/acceptance_ac2.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a fixture repo with a mechanical-commit chain and no marker, When rollback-plan runs, Then the mechanical classification from v0.3.0 still applies.",
+      "description": "Given the same HEAD, When `extend-gate.sh` runs, Then `ci-checks`, `msrv-verify`, and `vti-plan` are absent from `new_blocks`.",
       "test": "tests/acceptance_ac3.rs"
-    },
-    {
-      "id": "AC4",
-      "level": "MUST",
-      "description": "Given an installed binary older than the canonical crate version, When extend-gate.sh starts, Then it exits with the documented stale-binary code and a message naming installed version, expected version, and the install command, before any producer runs.",
-      "test": "tests/acceptance_ac4.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given the unified binary installed on RedBaron, When the full mcphost gate runs at HEAD, Then rollback-plan passes under redeploy-tag and the delta verdict carries no new blocks.",
-      "test": "tests/acceptance_ac5.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given build-contract.md, When a drafter reads the autobuilder routing note, Then it names the canonical build_into and marks the frozen path invalid for new PRDs.",
-      "test": "tests/acceptance_ac6.rs"
     }
   ],
   "scope": [
