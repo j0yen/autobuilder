@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7.2 — 2026-09-08
+
+Commit `30263b9` (v0.7.0 merge of PRD-autobuilder-source-unify) added `icu_collections`, `icu_locale_core`, `icu_normalizer`, `icu_properties`, `icu_provider` @2.3.0 and `idna_adapter` @1.2.2 to `autobuilder/autobuilder/Cargo.lock` — all of which require rustc >=1.86–1.88 — while `autobuilder/autobuilder/rust-toolchain.toml` still pins `1.85.0`. `cargo check --workspace` now fails with exit 101 on a clean checkout, confirmed independently by PRD-autobuilder-dryrun-snapshot-git-lock-flake's re-verification (two fresh local reproductions, receipts under `~/brain/journal/build/receipts/2026-09-08-autobuilder-dryrun-snapshot-git-lock-flake-msrv-break*.txt`) and by GH Actions run `34186177914` failing at the same HEAD. This cascades into `ci-checks`/`msrv-verify`/`vti-plan` gate blocks and most of the 17 extended-gates producers failing to emit receipts under parallel contention. Bump the toolchain pin (fleet precedent already exists: `agorabus`/`agorabus-nats-bridge` and 3 other repos pin `1.88.0`) to unbreak the build.
+
+The actual fix already landed at commit `618ead6` ("autobuilder: pin icu_*/idna_adapter transitive deps to MSRV-1.85-compatible versions"), which took the PRD's documented fallback path — pinning `icu_collections`/`icu_locale_core`/`icu_normalizer`/`icu_properties`/`icu_provider` to 2.1.1/2.1.2 and `idna_adapter` to 1.2.1 via `cargo update -p <pkg> --precise <ver>` — rather than bumping the toolchain channel, since the pinned versions were the narrower fix that restored a green build under the existing 1.85.0 pin. This v0.7.2 bump retroactively versions that already-merged fix: no source changed here beyond `Cargo.toml`'s version field and this CHANGELOG entry. Re-verified fresh at HEAD `7d87baf`: `cargo check --workspace` and `cargo test --release --workspace` both exit 0 on RedBaron.
+
 ## v0.7.1 — 2026-09-08
 
 Closes the two gaps the operator found in v0.7.0's port (PRD-autobuilder-source-unify,
