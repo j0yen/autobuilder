@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-rollback-tag-lineage-head-gap.md",
-  "intent_slug": "autobuilder-rollback-tag-lineage-head-gap",
-  "root_motivation": "`run_redeploy_tag` in `rollback.rs` walks every Cargo.toml version-bump commit strictly after the last reachable tag (`walk_tag_lineage`) and blocks with `tag-lineage-gap` on the *first* untagged entry it finds (`rollback.rs:790-812`), regardless of whether that entry is a stale intermediate version or the crate's current HEAD. A separate, more permissive `head-untagged` path (`rollback.rs:814-837`) exists specifically for \"HEAD's own version isn't tagged\" \u2014 but it is only reached when `walk_tag_lineage` finds *zero* gaps, i.e. when there was no version bump at all since the last tag. In the completely ordinary case where this gate run *is* the first check after bumping the version \u2014 which is every rust-extend ship, since `extend-handler.sh bump-version` runs before `gate` in the documented Phase-4 action sequence \u2014 the untagged bump commit IS HEAD, `walk_tag_lineage` finds it as a \"gap,\" and the more permissive `head-untagged` branch is never reached. The gate blocks. `ship-t...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-receipt-write-verify.md",
+  "intent_slug": "autobuilder-receipt-write-verify",
+  "root_motivation": "Joe (operator) lost a green branch to a nameless block for an hour and a half, and would have lost it entirely without someone reading the receipt's byte count. The why-chain: (1) why block? the verdict reader could not parse the flake-audit receipt. (2) why unparseable? the file is zero bytes. (3) why zero bytes? the writer opened the file and the write failed with no space left on the device; the open succeeded, the write did not, and the writer did not check. (4) why no check? receipt writers were built for a workstation with headroom; storage failure was never in their failure model. (5) why does the reader call it a block with no name? the reader maps every non-pass receipt state to block and prints the receipt's `blocking` field, which an empty file does not have. Deepest actionable level: the writer's contract (level 3) and the reader's state vocabulary (level 5), with a pre-flight free-space check as the guard.",
   "user_persona": "The autobuilder skill orchestrator (a Claude session) and the human invoking `/autobuilder` from their own project. Both shell out to this binary for the receipt + gate steps that must not live in bash.",
   "unfakeable_metric": {
     "name": "stage4_receipt_producers_callable",
@@ -14,20 +14,32 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a repo whose only version bump since the last tag is at HEAD and HEAD is untagged, When `rollback-plan --model redeploy-tag` runs, Then it does not report `verdict=block, block_reason=tag-lineage-gap`.",
+      "description": "Given a receipts directory on a filesystem that fails writes with `ENOSPC`, When a receipt writer runs, Then no final receipt file exists, no `.tmp` remains, and the error names the path and `ENOSPC`.",
       "test": "tests/acceptance_ac1.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a repo with an untagged version-bump commit that is *not* HEAD (an older, superseded bump), When `rollback-plan --model redeploy-tag` runs, Then it still reports `verdict=block, block_reason=tag-lineage-gap` naming that commit \u2014 unchanged from today.",
+      "description": "Given a zero-byte `flake-audit-receipt.json`, When `autobuilder gate` computes the verdict, Then `last-verdict.json` has `unreadable_receipts: [{name: \"flake-audit\", cause: \"empty\"}]`, `new_blocks` contains `flake-audit`, and the journal line contains `unreadable=1 flake-audit: empty`.",
       "test": "tests/acceptance_ac2.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `mcphost` at its real current HEAD (post-fix, gate re-run with `--force`), When `extend-gate.sh` runs, Then `rollback-plan` does not appear in `new_blocks`.",
+      "description": "Given a fake free-space report of 2 GB, When the gate reaches its receipt phase, Then it refuses with `cause=disk-low free_gb=2`, exits non-zero, and `last-verdict.json` is unchanged.",
       "test": "tests/acceptance_ac3.rs"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "Given all receipts readable, When the gate runs, Then `unreadable_receipts` is empty and behavior is unchanged from today.",
+      "test": "tests/acceptance_ac4.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "SHOULD",
+      "description": "Given the selftest fixture set, When the autobuilder tests run, Then the `rcptio` cases are named and green.",
+      "test": "tests/acceptance_ac5.rs"
     }
   ],
   "scope": [
