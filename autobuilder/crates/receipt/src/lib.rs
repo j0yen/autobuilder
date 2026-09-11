@@ -18,40 +18,95 @@
 //! with `receipt_digest` set to the empty string, then written back into the
 //! field. Any post-hoc edit to the receipt changes the recomputed digest,
 //! so forgery is detectable by re-running the same algorithm.
+//!
+//! Write-verify-rename invariant (PRD-autobuilder-receipt-write-verify): a
+//! receipt file on disk is either valid JSON with a verdict, or absent —
+//! never a partial/empty file left behind by a write that failed midway
+//! (e.g. `ENOSPC`). [`write`] writes to a `<name>.tmp` sibling, flushes and
+//! syncs it, re-reads and re-parses those exact bytes, and only then renames
+//! the temp file over the final path. Any failure at any step removes the
+//! temp file and returns an error naming both the path and the underlying
+//! OS error (`std::io::Error`'s `Display` already includes it, e.g. "No
+//! space left on device (os error 28)") — the final path is never created
+//! or touched by a failed write, so a caller can never observe a receipt
+//! that exists but didn't finish writing.
 
 #![cfg_attr(not(test), forbid(unsafe_code))]
 
-use std::fs;
-use std::path::Path;
+use std::fs::{self, File};
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow};
 use sha2::{Digest, Sha256};
 
 /// Compute and stamp `receipt_digest` on the JSON object, then write
-/// pretty-printed bytes to `path`.
-///
-/// The digest field is set to the empty string before hashing so the receipt
-/// is self-binding: re-running the same algorithm over the on-disk bytes
-/// reproduces the same digest exactly when no post-hoc edits occurred.
+/// pretty-printed bytes to `path` via write-verify-rename (see module docs).
 ///
 /// # Errors
 ///
 /// - Returns an error if `value` is not a JSON object (digest binding only
 ///   makes sense for top-level objects).
-/// - Returns an error if the parent directory cannot be created or the file
-///   cannot be written.
+/// - Returns an error if the parent directory cannot be created, the temp
+///   file cannot be written/flushed/synced, the bytes just written cannot be
+///   re-read and re-parsed as JSON, or the temp file cannot be renamed onto
+///   `path`. In every such case the temp file is removed first, so a failed
+///   write never leaves `<name>.tmp` or a partial `path` behind. The error
+///   message names `path` and carries the underlying OS error.
 pub fn write(path: &Path, mut value: serde_json::Value) -> Result<()> {
     if !value.is_object() {
         return Err(anyhow!("receipt must be a JSON object"));
     }
     set_digest(&mut value)?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("receipt write: creating parent dir for {}", path.display()))?;
     }
     let bytes = serde_json::to_vec_pretty(&value)?;
-    fs::write(path, bytes)?;
-    Ok(())
+    write_verify_rename(path, &bytes)
+}
+
+/// Write `bytes` to `<path>.tmp`, flush+sync, re-read+parse to verify, then
+/// atomically rename onto `path`. Removes the temp file on any failure.
+fn write_verify_rename(path: &Path, bytes: &[u8]) -> Result<()> {
+    let tmp_path: PathBuf = {
+        let mut s = path.as_os_str().to_owned();
+        s.push(".tmp");
+        PathBuf::from(s)
+    };
+
+    let result = (|| -> Result<()> {
+        let mut f = File::create(&tmp_path)
+            .with_context(|| format!("receipt write: creating {}", tmp_path.display()))?;
+        f.write_all(bytes)
+            .with_context(|| format!("receipt write: writing {}", tmp_path.display()))?;
+        f.sync_all()
+            .with_context(|| format!("receipt write: syncing {}", tmp_path.display()))?;
+        drop(f);
+
+        // Re-read and re-parse the bytes actually on disk — a write that
+        // silently truncated (some ENOSPC paths return a short write
+        // without erroring on every platform) must still be caught here.
+        let on_disk = fs::read(&tmp_path)
+            .with_context(|| format!("receipt write: re-reading {}", tmp_path.display()))?;
+        let _verified: serde_json::Value = serde_json::from_slice(&on_disk)
+            .with_context(|| format!("receipt write: re-parsing {}", tmp_path.display()))?;
+
+        fs::rename(&tmp_path, path).with_context(|| {
+            format!(
+                "receipt write: renaming {} to {}",
+                tmp_path.display(),
+                path.display()
+            )
+        })?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp_path);
+    }
+    result
 }
 
 /// Current UTC instant as an RFC3339 string (`YYYY-MM-DDTHH:MM:SSZ`).
