@@ -318,6 +318,41 @@ pub struct ReceiptCheck {
     pub pass: bool,
     /// Per-check diagnostic notes (joined into the printed output).
     pub notes: Vec<String>,
+    /// `Some(cause)` iff the receipt itself could not be read as a decision
+    /// — `"missing"`, `"empty"`, or `"parse: <error>"` — as distinct from a
+    /// receipt that was read fine but failed a schema/head/verdict check.
+    /// `None` for every check that reached [`check_receipt_value`] (the
+    /// receipt parsed as a JSON object; whether it then passed is a
+    /// separate question tracked by `pass`). See
+    /// PRD-autobuilder-receipt-write-verify: a receipt that could not be
+    /// written is never read as a verdict — this field is what lets the
+    /// gate say so by name instead of collapsing into an unnamed `block`.
+    pub unreadable_cause: Option<String>,
+}
+
+/// One receipt the gate reader could not read as a decision, named with its
+/// cause. Surfaced in [`ReleaseReceipt::unreadable_receipts`].
+#[derive(Debug, Clone, Serialize)]
+pub struct UnreadableReceipt {
+    /// Receipt name (e.g. `"flake-audit"`).
+    pub name: &'static str,
+    /// `"missing"`, `"empty"`, or `"parse: <error>"`.
+    pub cause: String,
+}
+
+/// Pure: collect the `unreadable_cause`-carrying checks into named entries,
+/// in the same order as `checks`.
+#[must_use]
+pub fn unreadable_receipts(checks: &[ReceiptCheck]) -> Vec<UnreadableReceipt> {
+    checks
+        .iter()
+        .filter_map(|c| {
+            c.unreadable_cause.clone().map(|cause| UnreadableReceipt {
+                name: c.name,
+                cause,
+            })
+        })
+        .collect()
 }
 
 /// The top-level release-receipt envelope.
@@ -335,6 +370,11 @@ pub struct ReleaseReceipt {
     pub block_count: usize,
     /// Per-receipt detail.
     pub checks: Vec<ReceiptCheck>,
+    /// Receipts that were missing, empty, or unparseable — named with cause,
+    /// never silently folded into an unnamed `block` (PRD-autobuilder-
+    /// receipt-write-verify requirement 2). Empty when every receipt read
+    /// cleanly, whether or not it then passed its schema/verdict checks.
+    pub unreadable_receipts: Vec<UnreadableReceipt>,
     /// RFC3339 UTC timestamp.
     pub captured_at: String,
     /// sha256 self-binding digest (populated by `autobuilder_receipt::write`).
@@ -367,6 +407,7 @@ pub fn check_receipt_value(
         receipt_digest_observed: None,
         pass: false,
         notes: Vec::new(),
+        unreadable_cause: None,
     };
 
     if let Some(s) = value.get("schema").and_then(serde_json::Value::as_str) {
@@ -446,21 +487,25 @@ pub fn check_receipt_at(spec: &ReceiptSpec, path: &Path, head_sha: &str) -> Rece
         receipt_digest_observed: None,
         pass: false,
         notes: Vec::new(),
+        unreadable_cause: None,
     };
 
     let Ok(bytes) = fs::read(path) else {
         check.notes.push(format!("missing: {}", path.display()));
+        check.unreadable_cause = Some("missing".to_owned());
         return check;
     };
     check.present = true;
     if bytes.is_empty() {
         check.notes.push("file is empty".to_owned());
+        check.unreadable_cause = Some("empty".to_owned());
         return check;
     }
     let value: serde_json::Value = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
         Err(e) => {
             check.notes.push(format!("invalid JSON: {e}"));
+            check.unreadable_cause = Some(format!("parse: {e}"));
             return check;
         }
     };

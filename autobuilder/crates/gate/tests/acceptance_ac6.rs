@@ -43,6 +43,7 @@ fn make_check(pass: bool, idx: usize) -> ReceiptCheck {
         receipt_digest_observed: None,
         pass,
         notes: Vec::new(),
+        unreadable_cause: None,
     }
 }
 
