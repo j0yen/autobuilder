@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.9.0 — 2026-09-11
+
+At 08:51Z on 2026-09-11 a gate on the mcphost gate-unstick branch finished
+24 of 25 receipts green and reported `block=1 blocking=` with an empty
+blocker name. The 25th receipt, `flake-audit-receipt.json`, is a zero-byte
+file: it was written four minutes before RedBaron's root disk hit 100%,
+the write produced an empty file without an error, and the verdict reader
+treated "unparseable" as "block" with no name. The gate's own test log
+shows zero failures. An operator had to notice the empty file, connect it
+to the disk incident, and merge by hand. This release makes every receipt
+write verify itself (write-verify-rename, ENOSPC included), makes an
+unreadable receipt a named state with its cause instead of an unnamed
+block, carries that name on the gate's own summary line so the operator
+journal shows it without opening files, and adds a free-space pre-flight
+that refuses before the receipt phase starts when the destination
+filesystem is below a floor (default 5 GiB).
+
 ## v0.8.1 — 2026-09-08
 
 `rollback-plan`'s `tag-lineage-gap` check blocks the gate whenever ANY version-bump commit since the last tag is untagged — including when that untagged commit is HEAD itself, on the very first gate run after a version bump. But the documented ship sequence (SKILL.md's "gate" action) always runs the gate *before* tagging, and only tags on a passing verdict. So a crate's first-ever gate attempt after a version bump is structurally unable to pass: the gate demands a tag that can only be created by a gate that already passed. Reproduced twice on `mcphost` today at two different HEADs (`dfa2e94` and `bcd97f1`, both v0.31.0, both `new_blocks=["rollback-plan"]`, both `block_detail: "version 0.31.0 (commit d25d5f1) was bumped in range but never tagged"`), stalling three otherwise-fully-merged PRDs (`mcphost-client-ip-behind-proxy`, `mcphost-tool-kind-honor`, `mcphost-first-call-reliability`) that cannot get past archive check #6 no matter how many times the tick re-gates.
