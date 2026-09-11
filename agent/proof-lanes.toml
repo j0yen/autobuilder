@@ -39,6 +39,18 @@ required_commands = [
 ]
 
 [[lane]]
+id = "receipt-rust"
+description = "Behavior changes in the dogfooded receipt crate (atomic write-verify-rename helper the receipt writers in crates/gate and crates/extended-gates share) — previously unrouted, first surfaced when PRD-autobuilder-receipt-write-verify added crates/receipt/src/lib.rs as a new workspace member"
+globs = [
+  "autobuilder/crates/receipt/src/**/*.rs",
+  "autobuilder/crates/receipt/tests/**/*.rs",
+]
+required_commands = [
+  "cd autobuilder && cargo check --workspace",
+  "cd autobuilder && cargo test -p autobuilder-receipt",
+]
+
+[[lane]]
 id = "metric-harness-rust"
 description = "Behavior changes in the dogfooded metric-harness crate"
 globs = ["autobuilder/crates/metric-harness/src/**/*.rs"]
