@@ -1,0 +1,21 @@
+{
+  "schema": "autobuilder.reviewer_agent_receipt.v1",
+  "head_sha": "{{HEAD_SHA}}",
+  "intent_card_sha": "{{INTENT_CARD_SHA}}",
+  "decision": "block",
+  "block_reasons": ["must-ac5-extend-gate-verification-missing"],
+  "concern_reasons": [],
+  "falsification": {
+    "test_audit": "AC5's test (must_ac5_extend_gate_verification_missing.rs) asserts extend-gate.sh's verification output is present and named; the current diff removes the only call site that writes it, so the test would fail at HEAD if it were run — it was not run this iteration.",
+    "panic_audit": "no unwrap/expect additions outside test code observed in the diff.",
+    "unsafe_audit": "no unsafe present in the diff.",
+    "public_api_audit": "no public API surface changed by this diff.",
+    "deps_audit": "no dependency changes since baseline.",
+    "drift_audit": "the verification call site was present at first-green and removed in a later iteration with no AC-driven justification in its commit message.",
+    "counter_attack": {
+      "description": "a branch could drop extend-gate.sh's verification step silently and still report a passing gate, since nothing asserts the step ran.",
+      "test_skeleton": "#[test]\nfn would_break_missing_verification_step() { unimplemented!() }"
+    }
+  },
+  "reviewed_at": "2026-09-17T15:54:42Z"
+}

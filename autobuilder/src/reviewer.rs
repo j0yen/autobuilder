@@ -88,6 +88,13 @@ struct ReviewRequest {
     base_ref: String,
     base_sha: String,
     intent_card_sha256: String,
+    /// R7 (PRD-autobuilder-reviewer-intent-card-sha): identical value to
+    /// `intent_card_sha256`, under the SAME field name `finalize`/the
+    /// receipt schema use (`intent_card_sha`) — so the reviewer copies from
+    /// a field named exactly what it writes back, instead of the receipt's
+    /// `intent_card_sha` sourcing from a request field spelled differently
+    /// (`intent_card_sha256`).
+    intent_card_sha: String,
     intent_card_path: String,
     commit_count: usize,
     commits: Vec<CommitSummary>,
@@ -126,7 +133,8 @@ fn prepare(args: PrepareArgs) -> Result<()> {
         head_sha: head_sha.clone(),
         base_ref: args.base.clone(),
         base_sha,
-        intent_card_sha256,
+        intent_card_sha256: intent_card_sha256.clone(),
+        intent_card_sha: intent_card_sha256,
         intent_card_path: "agent/intent-card.json".to_owned(),
         commit_count: commits.len(),
         commits,
@@ -234,6 +242,17 @@ struct FinalReceipt {
     receipt_digest: String,
 }
 
+/// Equality checks `finalize` runs against a value the reviewer subagent
+/// supplied, each cross-checked against an independently-derived source of
+/// truth (PRD-autobuilder-reviewer-intent-card-sha R5). This table is the
+/// one place these checks are listed — add a row here before adding a new
+/// one, and `rvsha_finalize_equality_checks_match_table` (below) fails the
+/// build if a future check's `// equality-check:` marker drifts from it.
+///
+/// | field             | compared against    | normalization                                                          |
+/// |-------------------|----------------------|-------------------------------------------------------------------------|
+/// | `head_sha`        | `git rev-parse HEAD` | none — both sides are already lowercase 40-hex git object ids.          |
+/// | `intent_card_sha` | sha256 of `agent/intent-card.json` | strip an optional `sha256:` prefix, lowercase, require exactly 64 hex chars, then compare hex-to-hex (see [`normalize_card_sha`]). |
 #[allow(clippy::needless_pass_by_value)] // owned `FinalizeArgs` matches the clap-dispatched contract
 #[allow(clippy::too_many_lines)] // a single linear pipeline (parse → validate → bind → write); splitting would hide the flow
 fn finalize(args: FinalizeArgs) -> Result<()> {
@@ -306,6 +325,7 @@ fn finalize(args: FinalizeArgs) -> Result<()> {
     }
 
     let head_sha = git_rev_parse(&project, "HEAD")?;
+    // equality-check: head_sha
     if parsed.head_sha != head_sha {
         return Err(anyhow!(
             "reviewer head_sha={} does not match current HEAD={}",
@@ -315,19 +335,23 @@ fn finalize(args: FinalizeArgs) -> Result<()> {
     }
     let intent_card_bytes = fs::read(project.join("agent/intent-card.json"))
         .context("missing agent/intent-card.json")?;
-    let intent_card_sha = sha256_hex(&intent_card_bytes);
-    if parsed.intent_card_sha != intent_card_sha {
+    let intent_card_hex = sha256_hex_bare(&intent_card_bytes);
+    // equality-check: intent_card_sha
+    let given_card_hex = normalize_card_sha(&parsed.intent_card_sha).map_err(|e| anyhow!(e))?;
+    if given_card_hex != intent_card_hex {
         return Err(anyhow!(
-            "reviewer intent_card_sha={} does not match current intent-card sha256={}",
+            "reviewer intent_card_sha={} (hex {given_card_hex}) does not match current intent-card sha256=sha256:{intent_card_hex} (hex {intent_card_hex})",
             parsed.intent_card_sha,
-            intent_card_sha
         ));
     }
+    // R1: write the canonical `sha256:<hex>` form regardless of the input
+    // spelling (bare, prefixed, or mixed-case) the reviewer used.
+    let canonical_intent_card_sha = format!("sha256:{given_card_hex}");
 
     let doc = FinalReceipt {
         schema: "autobuilder.reviewer_agent_receipt.v1",
         head_sha: parsed.head_sha,
-        intent_card_sha: parsed.intent_card_sha,
+        intent_card_sha: canonical_intent_card_sha,
         decision: effective_decision,
         block_reasons: parsed.block_reasons,
         concern_reasons: downgrade_concerns,
@@ -412,9 +436,31 @@ fn git_changed_files(project: &Path, range: &str) -> Result<Vec<String>> {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
+    format!("sha256:{}", sha256_hex_bare(bytes))
+}
+
+/// Bare (unprefixed) lowercase hex sha256 digest.
+fn sha256_hex_bare(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("sha256:{:x}", hasher.finalize())
+    format!("{:x}", hasher.finalize())
+}
+
+/// Normalizes a reviewer-supplied card hash (R1/R3,
+/// PRD-autobuilder-reviewer-intent-card-sha): strips an optional `sha256:`
+/// prefix, lowercases, and requires exactly 64 hex characters. Returns the
+/// bare lowercase hex on success, or an error naming the field and the
+/// expected `sha256:<64 hex>` form on failure.
+fn normalize_card_sha(given: &str) -> std::result::Result<String, String> {
+    let stripped = given.strip_prefix("sha256:").unwrap_or(given);
+    let lowered = stripped.to_ascii_lowercase();
+    if lowered.len() == 64 && lowered.chars().all(|c| c.is_ascii_hexdigit()) {
+        Ok(lowered)
+    } else {
+        Err(format!(
+            "intent_card_sha={given} is malformed; expected sha256:<64 hex> (a bare 64-hex value is also accepted)"
+        ))
+    }
 }
 
 /// Emit a `decision=concern` stub receipt that unblocks a standalone gate
@@ -480,4 +526,105 @@ fn self_host_stub(args: SelfHostStubArgs) -> Result<()> {
         receipt_path.display()
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rvsha_normalize_card_sha_accepts_bare_hex() {
+        let hex = "a".repeat(64);
+        assert_eq!(normalize_card_sha(&hex).unwrap(), hex);
+    }
+
+    #[test]
+    fn rvsha_normalize_card_sha_accepts_prefixed_and_uppercase() {
+        let hex = "b".repeat(64);
+        assert_eq!(
+            normalize_card_sha(&format!("sha256:{hex}")).unwrap(),
+            hex
+        );
+        assert_eq!(
+            normalize_card_sha(&hex.to_ascii_uppercase()).unwrap(),
+            hex
+        );
+        assert_eq!(
+            normalize_card_sha(&format!("sha256:{}", hex.to_ascii_uppercase())).unwrap(),
+            hex
+        );
+    }
+
+    #[test]
+    fn rvsha_normalize_card_sha_rejects_malformed() {
+        // 63 hex chars.
+        let short = "c".repeat(63);
+        let err = normalize_card_sha(&short).unwrap_err();
+        assert!(err.contains("intent_card_sha"));
+        assert!(err.contains("sha256:<64 hex>"));
+
+        // 64 chars but non-hex.
+        let non_hex = "g".repeat(64);
+        let err = normalize_card_sha(&non_hex).unwrap_err();
+        assert!(err.contains("intent_card_sha"));
+        assert!(err.contains("sha256:<64 hex>"));
+    }
+
+    /// R5: asserts the doc-comment table above `finalize` and the
+    /// `// equality-check: <field>` markers inside it never drift apart —
+    /// a new equality check against a request-provided value must be added
+    /// to BOTH or this test fails, keeping the table's claim ("this is
+    /// every such check") true.
+    #[test]
+    fn rvsha_finalize_equality_checks_match_table() {
+        let src = include_str!("reviewer.rs");
+
+        // Fields documented in the table (the `| `field`` column, first
+        // column only, skipping the header/separator rows).
+        let mut documented: Vec<&str> = Vec::new();
+        for line in src.lines() {
+            let line = line.trim();
+            if !line.starts_with("/// | `") {
+                continue;
+            }
+            // e.g. `/// | \`head_sha\`        | ... |`
+            if let Some(rest) = line.strip_prefix("/// | `") {
+                if let Some(end) = rest.find('`') {
+                    documented.push(&rest[..end]);
+                }
+            }
+        }
+        assert!(
+            !documented.is_empty(),
+            "expected to find the equality-check doc table above finalize"
+        );
+
+        // Fields marked at their actual check site.
+        let mut marked: Vec<&str> = Vec::new();
+        for line in src.lines() {
+            let line = line.trim();
+            if let Some(field) = line.strip_prefix("// equality-check: ") {
+                marked.push(field.trim());
+            }
+        }
+
+        let mut documented_sorted = documented.clone();
+        documented_sorted.sort_unstable();
+        documented_sorted.dedup();
+        let mut marked_sorted = marked.clone();
+        marked_sorted.sort_unstable();
+        marked_sorted.dedup();
+
+        assert_eq!(
+            documented_sorted, marked_sorted,
+            "doc table fields {documented:?} and `// equality-check:` markers {marked:?} \
+             must name exactly the same set of fields"
+        );
+        assert_eq!(
+            marked_sorted,
+            vec!["head_sha", "intent_card_sha"],
+            "unexpected equality-check set; update this assertion deliberately if a new \
+             request-provided-value equality check is intentionally added"
+        );
+    }
 }
