@@ -1,0 +1,23 @@
+# .buildloop/ci-equivalent.toml — autobuilder's own CI-equivalent
+# declaration for scripts/main-push-gate.sh (PRD-build-main-push-gate
+# requirement 7). Added by PRD-autobuilder-reviewer-intent-card-sha:
+# main-push-gate.sh started refusing every push to this repo's main the
+# moment its pre-push hook was installed here (2026-09-17, via this PRD's
+# own `worktree-extend.sh add`, whose install-repo-hooks step wires
+# core.hooksPath into every build_into repo it touches for the first
+# time) — autobuilder is listed in scripts/lib/fleet-repos.sh's
+# FLEET_REPOS (it has real GitHub Actions CI, .github/workflows/ci.yml),
+# so a missing ci-equivalent.toml is a refusal (rc 5 treated like rc 4),
+# not the ok-unmapped exemption non-fleet repos get. No PRD had yet
+# declared one, so this file's absence would have blocked every future
+# push to this repo's main once the hook existed, discovered live the
+# moment this PRD's own push hit it.
+#
+# [default].command mirrors .github/workflows/ci.yml's own steps (check,
+# strict clippy on the autobuilder bin, workspace test) without the
+# release build or cargo-deny — those already run as part of the
+# extend-gate 25-receipt gate that runs AFTER this check, at the push+gate
+# step. This file's job is a fast pre-push smoke, not a duplicate of the
+# full gate.
+[default]
+command = "cd autobuilder && cargo check --workspace && cargo clippy --bin autobuilder -- -D warnings && cargo test --workspace"

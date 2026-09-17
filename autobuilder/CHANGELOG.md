@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.9.1 — 2026-09-17
+
+`finalize` rejects a reviewer receipt whose `intent_card_sha` is not byte-equal to `sha256:<hex>` of the intent card. The reviewer is only told the field is "the sha256 of intent-card.json"; the exact value sits in `review-request.json` under a different key (`intent_card_sha256`). On 2026-09-17 at 15:54:42Z the proof-lane reviewer wrote the bare hex, finalize rejected a valid `block` verdict, extend-gate called it infra, and the gate went red for a phantom harness failure while the real finding (`must-ac5-extend-gate-verification-missing`) stayed hidden. This PRD makes finalize compare the hash (bare or prefixed), makes both prompts say "copy `intent_card_sha256` from review-request.json verbatim", and adds a unit test and a replay of the 2026-09-17 object.
+
 ## v0.9.0 — 2026-09-11
 
 At 08:51Z on 2026-09-11 a gate on the mcphost gate-unstick branch finished

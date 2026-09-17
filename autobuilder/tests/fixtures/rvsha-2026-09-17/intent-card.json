@@ -1,0 +1,33 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-build-gate-infra-outcome.md",
+  "intent_slug": "build-gate-infra-outcome",
+  "root_motivation": "The 2026-09-17 15:54:42Z proof-lane gate went red on reviewer-agent:infra even though the reviewer had returned a valid block verdict; a finalize rejection needs to carry the rejected verdict so a real finding is never hidden behind a generic infra label.",
+  "user_persona": "The build loop's gate on RedBaron and the operator reading its GATES line.",
+  "unfakeable_metric": {
+    "name": "acceptance_tests_passing_count",
+    "lower_is_better": false,
+    "harness_command": "scripts/run-metrics.sh",
+    "target": 12
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given extend-gate.sh's own verification step, When the branch's gate runs, Then the verification output is present and named in the receipt.",
+      "test": "tests/must_ac5_extend_gate_verification_missing.rs"
+    }
+  ],
+  "scope": ["agent/proof-lanes.toml", "scripts/extend-gate.sh"],
+  "non_goals": ["changing finalize's schema/decision-enum checks"],
+  "hard_constraints": {
+    "deny_unsafe": true
+  },
+  "five_whys_trace": [
+    "why did the gate go red on reviewer-agent:infra? because finalize rejected the reviewer's receipt.",
+    "why did finalize reject it? because intent_card_sha was bare hex, not sha256:-prefixed.",
+    "why did the reviewer write bare hex? the prompt only said \"the sha256 of intent-card.json\", not which exact string to copy.",
+    "why was there no exact string to copy? review-request.json named the field intent_card_sha256, the receipt schema names it intent_card_sha — no shared name to copy verbatim.",
+    "why did nobody catch this sooner? nine of ten prior runs happened to include the prefix by convention, not by contract."
+  ]
+}
