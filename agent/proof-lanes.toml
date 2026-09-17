@@ -115,8 +115,9 @@ required_commands = [
 
 [[lane]]
 id = "config"
-description = "Top-level repo + workspace config (lints, deny, toolchain pins)"
+description = "Top-level repo + workspace config (lints, deny, toolchain pins, main-push-gate's own CI-equivalent declaration — PRD-autobuilder-reviewer-intent-card-sha: this file itself was unrouted, dropping vti-plan's confidence to 0.0, the first push this repo's newly-installed pre-push hook ever gated)"
 globs = [
+  ".buildloop/**",
   ".gitignore",
   ".gitattributes",
   "autobuilder/.gitignore",
