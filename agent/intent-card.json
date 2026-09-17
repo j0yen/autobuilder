@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-receipt-write-verify.md",
-  "intent_slug": "autobuilder-receipt-write-verify",
-  "root_motivation": "Joe (operator) lost a green branch to a nameless block for an hour and a half, and would have lost it entirely without someone reading the receipt's byte count. The why-chain: (1) why block? the verdict reader could not parse the flake-audit receipt. (2) why unparseable? the file is zero bytes. (3) why zero bytes? the writer opened the file and the write failed with no space left on the device; the open succeeded, the write did not, and the writer did not check. (4) why no check? receipt writers were built for a workstation with headroom; storage failure was never in their failure model. (5) why does the reader call it a block with no name? the reader maps every non-pass receipt state to block and prints the receipt's `blocking` field, which an empty file does not have. Deepest actionable level: the writer's contract (level 3) and the reader's state vocabulary (level 5), with a pre-flight free-space check as the guard.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-autobuilder-reviewer-intent-card-sha.md",
+  "intent_slug": "autobuilder-reviewer-intent-card-sha",
+  "root_motivation": "**Who:** the build loop's gate on RedBaron (extend-gate's reviewer phase \u2192 `autobuilder reviewer-agent finalize`) and the operator reading its GATES line.",
   "user_persona": "The autobuilder skill orchestrator (a Claude session) and the human invoking `/autobuilder` from their own project. Both shell out to this binary for the receipt + gate steps that must not live in bash.",
   "unfakeable_metric": {
     "name": "stage4_receipt_producers_callable",
@@ -14,32 +14,62 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a receipts directory on a filesystem that fails writes with `ENOSPC`, When a receipt writer runs, Then no final receipt file exists, no `.tmp` remains, and the error names the path and `ENOSPC`.",
+      "description": "Given a reviewer object with `intent_card_sha` = bare 64-hex of the current card, When `finalize` runs, Then it succeeds and the written receipt has `intent_card_sha` = `sha256:<hex>`.",
       "test": "tests/acceptance_ac1.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a zero-byte `flake-audit-receipt.json`, When `autobuilder gate` computes the verdict, Then `last-verdict.json` has `unreadable_receipts: [{name: \"flake-audit\", cause: \"empty\"}]`, `new_blocks` contains `flake-audit`, and the journal line contains `unreadable=1 flake-audit: empty`.",
+      "description": "Given `intent_card_sha` = `sha256:<hex>` (today's form) or the same hex in uppercase, When `finalize` runs, Then it succeeds with the canonical prefixed lowercase form written.",
       "test": "tests/acceptance_ac2.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a fake free-space report of 2 GB, When the gate reaches its receipt phase, Then it refuses with `cause=disk-low free_gb=2`, exits non-zero, and `last-verdict.json` is unchanged.",
+      "description": "Given `intent_card_sha` = the hash of a different card, When `finalize` runs, Then it fails and the error contains the given value, the normalized given hex, and the current card's hex.",
       "test": "tests/acceptance_ac3.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given all receipts readable, When the gate runs, Then `unreadable_receipts` is empty and behavior is unchanged from today.",
+      "description": "Given `intent_card_sha` of 63 hex chars or containing non-hex, When `finalize` runs, Then it fails with a message naming `intent_card_sha` and the expected `sha256:<64 hex>` form.",
       "test": "tests/acceptance_ac4.rs"
     },
     {
       "id": "AC5",
-      "level": "SHOULD",
-      "description": "Given the selftest fixture set, When the autobuilder tests run, Then the `rcptio` cases are named and green.",
+      "level": "MUST",
+      "description": "Given the 2026-09-17 15:54:42Z `review-output.json` object and its intent card stored as a fixture, When `finalize` runs against a fixture project at that head, Then the receipt is written with `decision=block` and `block_reasons=[\"must-ac5-extend-gate-verification-missing\"]`.",
       "test": "tests/acceptance_ac5.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given the two prompt sites, When grepped, Then both contain the sentence that `intent_card_sha` is copied verbatim from `review-request.json`'s `intent_card_sha256`, and the two commits (rustbuild prompt repo, build-skill) are cited in this PRD's receipts.",
+      "test": "tests/acceptance_ac6.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given reviewer.rs, When its unit test runs, Then the doc-comment table above `finalize` lists exactly the fields compared by string equality against request-provided values, and each has a normalization entry.",
+      "test": "tests/acceptance_ac7.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given `cargo test -p autobuilder rvsha_` on RedBaron, When it runs, Then all `rvsha_*` tests pass and the workspace clippy/deny/test gates are unchanged from baseline.",
+      "test": "tests/acceptance_ac8.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "SHOULD",
+      "description": "Given `prepare` runs, When `review-request.json` is written, Then it carries `intent_card_sha` and `intent_card_sha256` with identical values.",
+      "test": "tests/acceptance_ac9.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "MUST",
+      "description": "Given this PRD has landed and the producer was reinstalled on RedBaron, When `autobuilder --version` is read and the 2026-09-17 15:54:42Z fixture object is finalized with the installed binary inside a real worktree at its head, Then the version is above 0.9.0 and the journal shows `reviewer-agent finalize: decision=block` for that run with no `finalize rejected` note. (Live; evidence: `cmd:autobuilder --version` and `journal:reviewer-agent finalize: decision=block`; never deferrable \u2014 Joe 2...",
+      "test": "tests/acceptance_ac10.rs"
     }
   ],
   "scope": [
