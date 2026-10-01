@@ -235,6 +235,14 @@ struct ReceiptDoc {
     /// v2: `redeploy-tag` only — human detail for `block_reason`.
     #[serde(skip_serializing_if = "Option::is_none")]
     block_detail: Option<String>,
+    /// v2: `redeploy-tag` only — count of in-range, untagged, non-newest
+    /// lineage entries forgiven because their version was already tagged
+    /// on a DIFFERENT commit (a concurrent land took the version number
+    /// first; this branch's own bump for it was superseded by a later
+    /// re-bump and was never going to carry the tag itself). Always `0`
+    /// outside `redeploy-tag` mode and on every block verdict.
+    #[serde(default)]
+    superseded: usize,
 }
 
 /// Resolution of the rollback base when `--base` was not given explicitly.
@@ -660,6 +668,7 @@ fn run_revert_commits(project: &Path, args: &Args, head_sha: &str) -> Result<()>
         tag_lineage: None,
         block_reason: None,
         block_detail: None,
+        superseded: 0,
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
@@ -713,6 +722,19 @@ fn walk_tag_lineage(project: &Path, base_sha: &str) -> Result<Vec<TagLineageEntr
         prev_version = version;
     }
     Ok(lineage)
+}
+
+/// Whether a tag named `v<version>` exists anywhere in the repo, on any
+/// commit — not necessarily the one `walk_tag_lineage` recorded the bump
+/// on. Used to forgive a superseded intermediate bump (run 309, mcphost
+/// 2026-09-30): a concurrent land can claim the exact version this branch
+/// bumped to on a different commit before this branch reaches land.
+fn tag_exists_anywhere(project: &Path, version: &str) -> Result<bool> {
+    let (status, _out, _err) = run_git_capturing(
+        project,
+        &["rev-parse", "--verify", "-q", &format!("refs/tags/v{version}")],
+    )?;
+    Ok(status == 0)
 }
 
 /// Whether HEAD can serve as a `redeploy-tag` rollback endpoint.
@@ -796,6 +818,44 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
     let previous_tag = base_tag.clone().unwrap_or_else(|| base_ref.clone());
 
     let lineage = walk_tag_lineage(project, &base_sha)?;
+
+    // A base reachable from no release tag at all is itself a lineage gap
+    // — "reachable from base without a tag". An explicit `--base` never
+    // sets `base_tag` (see above), so this is the only place that checks
+    // the base COMMIT's own version is actually the one its tag names,
+    // not just that `--base` happened to be spelled as a tag name.
+    if let Some(base_version) = cargo_version_at(project, &base_sha) {
+        let want = format!("v{base_version}");
+        let tagged_at_base = run_git(project, &["tag", "--points-at", &base_sha])?
+            .lines()
+            .map(str::trim)
+            .any(|t| t == want);
+        if !tagged_at_base {
+            let base = BaseInfo {
+                git_ref: &base_ref,
+                sha: &base_sha,
+                tag: Some(&previous_tag),
+                note: base_note.as_deref(),
+            };
+            let detail = format!(
+                "base {base_ref} (commit {}) has version {base_version} but no matching tag {want} \
+                 at that commit — nothing reachable from base confirms it was ever released",
+                short(&base_sha)
+            );
+            return finish_redeploy_block(
+                project,
+                &rollback_md_abs,
+                &rollback_md_rel,
+                head_sha,
+                &base,
+                "tag-lineage-gap",
+                &detail,
+                &lineage,
+                args.explain,
+            );
+        }
+    }
+
     // PRD-autobuilder-rollback-tag-lineage-head-gap: an untagged entry that
     // is also the *newest* entry in the lineage is not a gap — it's HEAD's
     // current version, still waiting on `ship-tag.sh` to tag a passing
@@ -807,14 +867,34 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
     // touches [package].version), so the bump commit and head_sha differ
     // even though nothing has bumped since — `walk_tag_lineage` only
     // records commits where the version itself changed, so "newest entry"
-    // is the right test, not "entry's commit is literally HEAD". Only an
-    // untagged entry that is superseded by a later, different-version
-    // entry (a stale intermediate bump nothing will ever tag) is a
-    // genuine lineage gap.
+    // is the right test, not "entry's commit is literally HEAD".
+    //
+    // An untagged, non-newest entry is ALSO not a gap when its own version
+    // tag already exists somewhere else in the repo (run 309, mcphost
+    // 2026-09-30): a concurrent land can release the exact version this
+    // branch bumped to on a different sha before this branch reaches
+    // land, at which point THIS branch's version-at-rebase self-heal bumps
+    // again past the collision — the superseded bump was never going to
+    // carry the tag itself (a different commit already does), so it isn't
+    // a forgotten-to-tag gap, only a `superseded` bump. Only an untagged
+    // entry whose version was NEVER tagged anywhere — on this commit or
+    // any other — is a genuine lineage gap: reachable from base, released
+    // nowhere.
     let last_idx = lineage.len().checked_sub(1);
-    if let Some((_, gap)) =
-        lineage.iter().enumerate().find(|(idx, e)| e.tag.is_none() && Some(*idx) != last_idx)
-    {
+    let mut superseded = 0usize;
+    let mut real_gap = None;
+    for (idx, entry) in lineage.iter().enumerate() {
+        if entry.tag.is_some() || Some(idx) == last_idx {
+            continue;
+        }
+        if tag_exists_anywhere(project, &entry.version)? {
+            superseded += 1;
+            continue;
+        }
+        real_gap = Some(entry);
+        break;
+    }
+    if let Some(gap) = real_gap {
         let base = BaseInfo {
             git_ref: &base_ref,
             sha: &base_sha,
@@ -915,6 +995,7 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
         tag_lineage: Some(lineage.clone()),
         block_reason: None,
         block_detail: None,
+        superseded,
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
@@ -984,6 +1065,7 @@ fn finish_redeploy_block(
         tag_lineage: if lineage.is_empty() { None } else { Some(lineage.to_vec()) },
         block_reason: Some(reason),
         block_detail: Some(detail.to_owned()),
+        superseded: 0,
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
