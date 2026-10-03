@@ -16,8 +16,15 @@
 //! follows `license_audit.rs`'s `extended-gates.toml` read pattern exactly.
 //! Missing file or missing key behaves exactly as before this was added
 //! (empty allowlist, no files skipped).
+//!
+//! An optional `--files-from <manifest>` CLI flag (plumbed through
+//! [`run_with_files_from`]) restricts the scan to exactly the files listed in
+//! `manifest` (one path per line, relative to `project`) instead of walking
+//! the whole tree. Each listed path still has [`skip_dir`] applied to its
+//! directory components, and a listed path that doesn't exist (or isn't a
+//! file) is skipped and counted rather than erroring the whole scan.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result};
 use regex::{Regex, RegexSet};
@@ -52,8 +59,10 @@ const PATTERNS: &[(&str, &str)] = &[
 /// drag third-party secret-shaped material (e.g. a `cryptography` package's
 /// own test PEMs under a `.venv`) into the scan. Only applied to entries
 /// that are actually directories (see the `filter_entry` closure in
-/// [`run`]) — a file that happens to share one of these names (e.g. a
-/// `build` shell script) is still scanned.
+/// [`walk_all_files`]) — a file that happens to share one of these names
+/// (e.g. a `build` shell script) is still scanned. `--files-from` applies
+/// the same names to each listed path's directory components via
+/// [`path_has_skipped_component`].
 fn skip_dir(name: &str) -> bool {
     matches!(
         name,
@@ -120,37 +129,114 @@ fn is_allowlisted(rel_path: &str, allow: &[Regex]) -> bool {
     allow.iter().any(|re| re.is_match(rel_path))
 }
 
-/// Run the secrets-scan audit on `project`.
+/// `true` if any normal (non-root, non-`..`) component of `rel` is one of
+/// [`skip_dir`]'s pruned directory names. Used by `--files-from` to apply
+/// the same directory-pruning a tree walk would have applied, to a path
+/// that was handed to us explicitly rather than discovered by walking.
+fn path_has_skipped_component(rel: &Path) -> bool {
+    rel.components().any(|c| match c {
+        Component::Normal(os) => skip_dir(&os.to_string_lossy()),
+        _ => false,
+    })
+}
+
+/// Collect every file under `project`, pruning [`skip_dir`] directories
+/// during the walk (so their contents are never descended into, not merely
+/// filtered out after the fact).
+fn walk_all_files(project: &Path) -> Vec<PathBuf> {
+    WalkDir::new(project)
+        .into_iter()
+        .filter_entry(|e| {
+            // Only directory entries are pruned by name; a file that
+            // happens to share a name with a pruned directory is still
+            // scanned.
+            if !e.file_type().is_dir() {
+                return true;
+            }
+            !skip_dir(&e.file_name().to_string_lossy())
+        })
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.path().to_owned())
+        .collect()
+}
+
+/// Resolve `--files-from <manifest>` into the list of files to scan.
+///
+/// `manifest` is read as one relative path per line (blank lines and `#`
+/// comments ignored); each is joined onto `project`. A listed path that
+/// doesn't exist, isn't a plain file, or has a [`skip_dir`]-pruned
+/// directory component is skipped (not scanned, not an error) and counted
+/// in the returned `skipped` total.
+fn resolve_files_from(project: &Path, manifest: &Path) -> Result<(Vec<PathBuf>, usize)> {
+    let text = std::fs::read_to_string(manifest)
+        .with_context(|| format!("read --files-from manifest {}", manifest.display()))?;
+    let mut files = Vec::new();
+    let mut skipped = 0usize;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let rel = Path::new(line);
+        if path_has_skipped_component(rel) {
+            skipped += 1;
+            continue;
+        }
+        let abs = project.join(rel);
+        if !abs.is_file() {
+            skipped += 1;
+            continue;
+        }
+        files.push(abs);
+    }
+    Ok((files, skipped))
+}
+
+/// Run the secrets-scan audit on `project`, scanning its whole tree.
 ///
 /// # Errors
 ///
 /// Returns an error if the regex set fails to compile or the receipt write
 /// fails.
 pub fn run(spec: &ProducerSpec, project: &Path) -> Result<String> {
+    run_with_files_from(spec, project, None)
+}
+
+/// Run the secrets-scan audit on `project`.
+///
+/// When `files_from` is `Some(manifest)`, only the files listed in
+/// `manifest` (one path per line, relative to `project`, [`skip_dir`]
+/// pruning still applied to each) are scanned — this is what wm-build's
+/// gate passes (`producers.toml`'s secrets-scan entry) to scope the scan to
+/// tracked files rather than the whole worktree (e.g. a `.venv` created by
+/// `uv sync` during the build). When `files_from` is `None`, the whole
+/// project tree is walked.
+///
+/// # Errors
+///
+/// Returns an error if the regex set fails to compile, the manifest can't
+/// be read, or the receipt write fails.
+pub fn run_with_files_from(
+    spec: &ProducerSpec,
+    project: &Path,
+    files_from: Option<&Path>,
+) -> Result<String> {
     let patterns: Vec<&str> = PATTERNS.iter().map(|(_, p)| *p).collect();
     let set = RegexSet::new(&patterns).context("compile secrets-scan regex set")?;
 
     let allowlist = load_allowlist(project);
     let allow_res: Vec<Regex> = allowlist.iter().filter_map(|p| glob_to_regex(p)).collect();
 
+    let (candidates, files_skipped) = match files_from {
+        Some(manifest) => resolve_files_from(project, manifest)?,
+        None => (walk_all_files(project), 0),
+    };
+
     let mut files_scanned = 0usize;
     let mut findings: Vec<Finding> = Vec::new();
 
-    for entry in WalkDir::new(project).into_iter().filter_entry(|e| {
-        // Only directory entries are pruned by name; a file that happens to
-        // share a name with a pruned directory is still scanned.
-        if !e.file_type().is_dir() {
-            return true;
-        }
-        !skip_dir(&e.file_name().to_string_lossy())
-    }) {
-        let Ok(entry) = entry else {
-            continue;
-        };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let path: PathBuf = entry.path().to_owned();
+    for path in candidates {
         let Ok(text) = std::fs::read_to_string(&path) else {
             continue;
         };
@@ -184,10 +270,15 @@ pub fn run(spec: &ProducerSpec, project: &Path) -> Result<String> {
     }
 
     let verdict = if findings.is_empty() { "pass" } else { "block" };
-    let summary = format!(
+    let mut summary = format!(
         "secrets-scan: scanned {files_scanned} files, {} findings",
         findings.len()
     );
+    if files_skipped > 0 {
+        summary.push_str(&format!(
+            ", {files_skipped} listed files skipped (missing or pruned)"
+        ));
+    }
     write_receipt(
         project,
         spec,
@@ -254,6 +345,69 @@ mod tests {
             findings_count(project),
             1,
             "a PEM header outside a pruned dir must still be found"
+        );
+    }
+
+    /// `--files-from` restricts the scan to exactly the listed files: a
+    /// manifest naming only `src/ok.rs` must not pick up `src/leak.pem`,
+    /// even though it exists on disk.
+    #[test]
+    fn files_from_restricts_scan_to_listed_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        std::fs::create_dir_all(project.join("src")).unwrap();
+        std::fs::write(project.join("src/ok.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(project.join("src/leak.pem"), PEM_HEADER).unwrap();
+
+        let manifest = tmp.path().join("manifest.txt");
+        std::fs::write(&manifest, "src/ok.rs\n").unwrap();
+
+        run_with_files_from(spec(), project, Some(&manifest)).unwrap();
+        assert_eq!(
+            findings_count(project),
+            0,
+            "manifest listing only src/ok.rs must not scan src/leak.pem"
+        );
+    }
+
+    /// The same manifest mechanism, but listing the leaking file, must
+    /// surface the finding.
+    #[test]
+    fn files_from_scans_listed_leak() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        std::fs::create_dir_all(project.join("src")).unwrap();
+        std::fs::write(project.join("src/ok.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(project.join("src/leak.pem"), PEM_HEADER).unwrap();
+
+        let manifest = tmp.path().join("manifest.txt");
+        std::fs::write(&manifest, "src/leak.pem\n").unwrap();
+
+        run_with_files_from(spec(), project, Some(&manifest)).unwrap();
+        assert_eq!(
+            findings_count(project),
+            1,
+            "manifest listing src/leak.pem must surface the finding"
+        );
+    }
+
+    /// A manifest entry that doesn't exist on disk is skipped, not an
+    /// error, and doesn't block the scan.
+    #[test]
+    fn files_from_skips_missing_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        std::fs::create_dir_all(project.join("src")).unwrap();
+        std::fs::write(project.join("src/ok.rs"), "fn main() {}\n").unwrap();
+
+        let manifest = tmp.path().join("manifest.txt");
+        std::fs::write(&manifest, "src/ok.rs\nsrc/does_not_exist.rs\n").unwrap();
+
+        let summary = run_with_files_from(spec(), project, Some(&manifest)).unwrap();
+        assert_eq!(findings_count(project), 0);
+        assert!(
+            summary.contains("skipped"),
+            "summary should note the skipped missing entry: {summary}"
         );
     }
 }
