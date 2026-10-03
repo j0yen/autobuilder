@@ -255,6 +255,27 @@ struct ReceiptDoc {
     /// outside `redeploy-tag` mode and on every block verdict.
     #[serde(default)]
     superseded: usize,
+    /// v2: `redeploy-tag` only — machine-readable reason a head-tag
+    /// collision check still PASSED (PRD-autobuilder-rollback-tag-no-bump-
+    /// in-range). Today the only value is `no-bump-in-range`. `None` on a
+    /// normal pass (a real redeploy target, no collision to forgive) and on
+    /// every block.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pass_reason: Option<&'static str>,
+    /// v2: `redeploy-tag`, `no-bump-in-range` pass only — HEAD's own
+    /// `[package].version`. `None` otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    head_version: Option<String>,
+    /// v2: `redeploy-tag`, `no-bump-in-range` pass only — the base's
+    /// `[package].version` (equal to `head_version`, by definition of this
+    /// reason). `None` otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_version: Option<String>,
+    /// v2: `redeploy-tag`, `no-bump-in-range` pass only — always `0`;
+    /// present so the receipt states explicitly that nothing bumped in
+    /// range, not merely that nothing blocked. `None` otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    range_bumps: Option<usize>,
 }
 
 /// Resolution of the rollback base when `--base` was not given explicitly.
@@ -683,6 +704,10 @@ fn run_revert_commits(project: &Path, args: &Args, head_sha: &str) -> Result<()>
         block_reason: None,
         block_detail: None,
         superseded: 0,
+        pass_reason: None,
+        head_version: None,
+        base_version: None,
+        range_bumps: None,
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
@@ -795,26 +820,38 @@ enum HeadTagStatus {
     /// HEAD's version has no tag yet, but the tag name is free to create
     /// (e.g. at ship time via `ship-tag.sh`). Treated as passing.
     Taggable,
-    /// HEAD cannot be tagged: its version is unreadable, or the tag name it
-    /// wants is already claimed by a different commit.
-    Blocked(String),
+    /// HEAD cannot be tagged: the tag name it wants is already claimed by a
+    /// different commit, `tag_commit`. The caller still gets to decide
+    /// whether that's a real collision or just HEAD's own base holding
+    /// still (PRD-autobuilder-rollback-tag-no-bump-in-range) — `tag_commit`
+    /// is what lets it tell the difference.
+    Blocked { detail: String, tag_commit: String },
 }
 
-fn head_tag_status(project: &Path, head_sha: &str, version_tag: &str) -> Result<HeadTagStatus> {
+/// `head_version` is `HEAD`'s own `[package].version`; `base_version` is
+/// the base's, when readable (purely for the block message — it does not
+/// change the verdict here, the caller applies the no-bump-in-range
+/// forgiveness itself using `tag_commit`).
+fn head_tag_status(
+    project: &Path,
+    head_sha: &str,
+    head_version: &str,
+    base_version: Option<&str>,
+) -> Result<HeadTagStatus> {
+    let version_tag = format!("v{head_version}");
     let at_head = run_git(project, &["tag", "--points-at", head_sha])?;
     if at_head.lines().map(str::trim).any(|t| t == version_tag) {
         return Ok(HeadTagStatus::Tagged);
     }
-    let (status, _out, _err) = run_git_capturing(
-        project,
-        &["rev-parse", "--verify", "-q", &format!("refs/tags/{version_tag}")],
-    )?;
-    if status == 0 {
-        return Ok(HeadTagStatus::Blocked(format!(
-            "tag {version_tag} already exists on a different commit; cannot redeploy-tag HEAD"
-        )));
-    }
-    Ok(HeadTagStatus::Taggable)
+    let Some(tag_commit) = resolve_tag_commit(project, &version_tag) else {
+        return Ok(HeadTagStatus::Taggable);
+    };
+    let base_part = base_version.map_or_else(String::new, |b| format!(", base is {b}"));
+    let detail = format!(
+        "tag {version_tag} already exists on commit {} (HEAD is {head_version}{base_part}); cannot redeploy-tag HEAD",
+        short(&tag_commit)
+    );
+    Ok(HeadTagStatus::Blocked { detail, tag_commit })
 }
 
 /// Bundles the base-resolution fields so helper functions stay under
@@ -1000,12 +1037,40 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
         );
     }
 
+    let base_version = cargo_version_at(project, &base_sha);
     let head_version = cargo_version_at(project, head_sha);
-    let head_status = match &head_version {
-        None => HeadTagStatus::Blocked("HEAD has no readable Cargo.toml [package].version".to_owned()),
-        Some(v) => head_tag_status(project, head_sha, &format!("v{v}"))?,
+    // PRD-autobuilder-rollback-tag-no-bump-in-range (hotfix 2026-10-03, run
+    // 368 mcphost): wm-build's land bumps the version itself and resets any
+    // inner bump (0.9.66), so a branch gated for land legitimately carries
+    // NO version change at all relative to base — `head_tag_status`'s
+    // "already claimed by a different commit" check assumed every gated
+    // branch bumps, and false-blocked HEAD against the base's OWN release
+    // tag. That's only a real collision when the colliding commit is NOT
+    // the base's own certified release (`base_tag_commit`, already proven
+    // above to be base's exact tag or an ancestor of it per PR #3's
+    // tolerance) — when it IS that commit, and nothing bumped in
+    // `base..HEAD`, the "collision" is just HEAD's base holding still, and
+    // that commit being `base_tag_commit` (itself an ancestor of `base_sha`,
+    // which is an ancestor of HEAD here) makes it an ancestor of HEAD too.
+    let mut pass_reason: Option<&'static str> = None;
+    let blocked_detail: Option<String> = match &head_version {
+        None => Some("HEAD has no readable Cargo.toml [package].version".to_owned()),
+        Some(v) => match head_tag_status(project, head_sha, v, base_version.as_deref())? {
+            HeadTagStatus::Tagged | HeadTagStatus::Taggable => None,
+            HeadTagStatus::Blocked { detail, tag_commit } => {
+                let no_bump_in_range = base_version.as_deref() == Some(v.as_str())
+                    && base_tag_commit.as_deref() == Some(tag_commit.as_str())
+                    && is_ancestor(project, &tag_commit, head_sha)?;
+                if no_bump_in_range {
+                    pass_reason = Some("no-bump-in-range");
+                    None
+                } else {
+                    Some(detail)
+                }
+            }
+        },
     };
-    if let HeadTagStatus::Blocked(detail) = head_status {
+    if let Some(detail) = blocked_detail {
         let base = BaseInfo {
             git_ref: &base_ref,
             sha: &base_sha,
@@ -1080,14 +1145,19 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
         block_reason: None,
         block_detail: None,
         superseded,
+        pass_reason,
+        head_version: if pass_reason.is_some() { head_version.clone() } else { None },
+        base_version: if pass_reason.is_some() { base_version.clone() } else { None },
+        range_bumps: if pass_reason.is_some() { Some(0) } else { None },
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
     receipt::write(&receipt_path, value)?;
 
     println!(
-        "rollback-plan: head={head_sha} model=redeploy-tag base_tag={previous_tag} target={} verdict=pass",
-        target.tag
+        "rollback-plan: head={head_sha} model=redeploy-tag base_tag={previous_tag} target={} verdict=pass{}",
+        target.tag,
+        pass_reason.map(|r| format!(" reason={r}")).unwrap_or_default()
     );
 
     Ok(())
@@ -1152,6 +1222,10 @@ fn finish_redeploy_block(
         block_reason: Some(reason),
         block_detail: Some(detail.to_owned()),
         superseded: 0,
+        pass_reason: None,
+        head_version: None,
+        base_version: None,
+        range_bumps: None,
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
