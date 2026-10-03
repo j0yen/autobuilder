@@ -205,6 +205,18 @@ struct ReceiptDoc {
     /// Set to `"base=initial (no tags)"` when the default resolution found
     /// no matching tag and fell back to the crate's initial commit.
     base_note: Option<String>,
+    /// v2: `redeploy-tag` only — the commit `v<base_version>` actually
+    /// points at, when the base was accepted as released. Equal to
+    /// `base_sha` on the exact-match fast path; an ancestor of `base_sha`
+    /// when the base is an un-bumped hotfix past its release tag
+    /// (PRD-autobuilder-rollback-tag-ancestor-ok). `None` on every block.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_tag_commit: Option<String>,
+    /// v2: `redeploy-tag` only — commits between `base_tag_commit` and
+    /// `base_sha` (`0` on the exact-match fast path). `None` on every
+    /// block.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_tag_distance: Option<usize>,
     rollback_md: String,
     commit_count: usize,
     revertable_count: usize,
@@ -653,6 +665,8 @@ fn run_revert_commits(project: &Path, args: &Args, head_sha: &str) -> Result<()>
         base_sha,
         base_tag: base_tag.clone(),
         base_note: base_note.clone(),
+        base_tag_commit: None,
+        base_tag_distance: None,
         rollback_md: rollback_md_rel.to_string_lossy().into_owned(),
         commit_count: entries.len(),
         revertable_count,
@@ -735,6 +749,43 @@ fn tag_exists_anywhere(project: &Path, version: &str) -> Result<bool> {
         &["rev-parse", "--verify", "-q", &format!("refs/tags/v{version}")],
     )?;
     Ok(status == 0)
+}
+
+/// The commit `tag` points at (dereferencing an annotated tag to its
+/// commit), or `None` when no such tag exists anywhere in the repo.
+fn resolve_tag_commit(project: &Path, tag: &str) -> Option<String> {
+    let (status, stdout, _err) =
+        run_git_capturing(project, &["rev-parse", "--verify", "-q", &format!("refs/tags/{tag}^{{commit}}")]).ok()?;
+    if status != 0 {
+        return None;
+    }
+    let sha = stdout.trim();
+    if sha.is_empty() { None } else { Some(sha.to_owned()) }
+}
+
+/// `git merge-base --is-ancestor ancestor descendant`: `Ok(true)` when
+/// `ancestor` is reachable from `descendant` (exit 0), `Ok(false)` on exit
+/// 1 (not an ancestor); any other exit is a real git error.
+fn is_ancestor(project: &Path, ancestor: &str, descendant: &str) -> Result<bool> {
+    let (status, _out, stderr) =
+        run_git_capturing(project, &["merge-base", "--is-ancestor", ancestor, descendant])?;
+    match status {
+        0 => Ok(true),
+        1 => Ok(false),
+        _ => Err(anyhow!(
+            "git merge-base --is-ancestor {ancestor} {descendant} failed: {}",
+            stderr.trim()
+        )),
+    }
+}
+
+/// Count of commits in `from..to` (exclusive of `from`) — the distance a
+/// release tag's commit sits behind `to`.
+fn commits_between(project: &Path, from: &str, to: &str) -> Result<usize> {
+    let out = run_git(project, &["rev-list", "--count", &format!("{from}..{to}")])?;
+    out.trim()
+        .parse::<usize>()
+        .with_context(|| format!("git rev-list --count {from}..{to} produced non-numeric output: {out:?}"))
 }
 
 /// Whether HEAD can serve as a `redeploy-tag` rollback endpoint.
@@ -824,35 +875,66 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
     // sets `base_tag` (see above), so this is the only place that checks
     // the base COMMIT's own version is actually the one its tag names,
     // not just that `--base` happened to be spelled as a tag name.
+    //
+    // PRD-autobuilder-rollback-tag-ancestor-ok (hotfix 2026-10-03, runs
+    // 358/354/336 on mcphost): the exact-match check above used to be the
+    // *only* way to pass, which falsely blocked a base that is a few
+    // un-bumped hotfix commits (normal on main) past its own release tag.
+    // Tolerate that shape: `v<base_version>` may live on an ANCESTOR of
+    // base instead of on base itself, as long as nothing changed the
+    // declared version between that tag's commit and base — i.e. the
+    // version at the tag commit really is `base_version`, just reached a
+    // few commits later. A tag that exists but fails either check (not an
+    // ancestor, or the version changed and changed back) is still a
+    // genuine gap, same as no tag at all.
+    let mut base_tag_commit: Option<String> = None;
+    let mut base_tag_distance: Option<usize> = None;
     if let Some(base_version) = cargo_version_at(project, &base_sha) {
         let want = format!("v{base_version}");
         let tagged_at_base = run_git(project, &["tag", "--points-at", &base_sha])?
             .lines()
             .map(str::trim)
             .any(|t| t == want);
-        if !tagged_at_base {
-            let base = BaseInfo {
-                git_ref: &base_ref,
-                sha: &base_sha,
-                tag: Some(&previous_tag),
-                note: base_note.as_deref(),
-            };
-            let detail = format!(
-                "base {base_ref} (commit {}) has version {base_version} but no matching tag {want} \
-                 at that commit — nothing reachable from base confirms it was ever released",
-                short(&base_sha)
-            );
-            return finish_redeploy_block(
-                project,
-                &rollback_md_abs,
-                &rollback_md_rel,
-                head_sha,
-                &base,
-                "tag-lineage-gap",
-                &detail,
-                &lineage,
-                args.explain,
-            );
+
+        if tagged_at_base {
+            base_tag_commit = Some(base_sha.clone());
+            base_tag_distance = Some(0);
+        } else {
+            let mut tolerated = false;
+            if let Some(tag_commit) = resolve_tag_commit(project, &want) {
+                if is_ancestor(project, &tag_commit, &base_sha)?
+                    && cargo_version_at(project, &tag_commit).as_deref() == Some(base_version.as_str())
+                {
+                    base_tag_distance = Some(commits_between(project, &tag_commit, &base_sha)?);
+                    base_tag_commit = Some(tag_commit);
+                    tolerated = true;
+                }
+            }
+            if !tolerated {
+                let base = BaseInfo {
+                    git_ref: &base_ref,
+                    sha: &base_sha,
+                    tag: Some(&previous_tag),
+                    note: base_note.as_deref(),
+                };
+                let detail = format!(
+                    "base {base_ref} (commit {}) has version {base_version} but no matching tag {want} \
+                     at that commit or any ancestor of it — nothing reachable from base confirms it was \
+                     ever released",
+                    short(&base_sha)
+                );
+                return finish_redeploy_block(
+                    project,
+                    &rollback_md_abs,
+                    &rollback_md_rel,
+                    head_sha,
+                    &base,
+                    "tag-lineage-gap",
+                    &detail,
+                    &lineage,
+                    args.explain,
+                );
+            }
         }
     }
 
@@ -980,6 +1062,8 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
         base_sha: base_sha.clone(),
         base_tag: Some(previous_tag.clone()),
         base_note: base_note.clone(),
+        base_tag_commit,
+        base_tag_distance,
         rollback_md: rollback_md_rel.to_string_lossy().into_owned(),
         commit_count: lineage.len(),
         revertable_count: 0,
@@ -1050,6 +1134,8 @@ fn finish_redeploy_block(
         base_sha: base.sha.to_owned(),
         base_tag: base.tag.map(str::to_owned),
         base_note: base.note.map(str::to_owned),
+        base_tag_commit: None,
+        base_tag_distance: None,
         rollback_md: rollback_md_rel.to_string_lossy().into_owned(),
         commit_count: lineage.len(),
         revertable_count: 0,
