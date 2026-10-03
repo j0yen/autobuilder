@@ -1,7 +1,8 @@
 //! `secrets-scan`: scan tracked source files for high-confidence secret patterns.
 //!
 //! Pure-Rust. Walks the project tree (skipping `target/`, `.git/`, vendored
-//! reference dirs), reads each file's text, and matches a regex set tuned for
+//! reference dirs, and common Python/JS build-tooling dirs — see
+//! [`skip_dir`]), reads each file's text, and matches a regex set tuned for
 //! low false-positive: AWS access keys, GitHub PATs, private-key PEM headers,
 //! Slack webhook URLs. The planted-failure fixture
 //! (`tests/fixtures/leaked-key/`) embeds a synthetic AKIA pattern; the
@@ -46,10 +47,32 @@ const PATTERNS: &[(&str, &str)] = &[
     ("slack-webhook", r"https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+"),
 ];
 
+/// Directory names pruned from the walk — build output, VCS metadata,
+/// vendored reference trees, and Python/JS tooling caches that otherwise
+/// drag third-party secret-shaped material (e.g. a `cryptography` package's
+/// own test PEMs under a `.venv`) into the scan. Only applied to entries
+/// that are actually directories (see the `filter_entry` closure in
+/// [`run`]) — a file that happens to share one of these names (e.g. a
+/// `build` shell script) is still scanned.
 fn skip_dir(name: &str) -> bool {
     matches!(
         name,
-        "target" | ".git" | "node_modules" | "autoresearch-macos" | "jankurai" | "jeryu" | "vendor"
+        "target"
+            | ".git"
+            | "node_modules"
+            | "autoresearch-macos"
+            | "jankurai"
+            | "jeryu"
+            | "vendor"
+            | ".venv"
+            | "venv"
+            | "__pycache__"
+            | ".tox"
+            | ".mypy_cache"
+            | ".pytest_cache"
+            | ".ruff_cache"
+            | "dist"
+            | "build"
     )
 }
 
@@ -114,8 +137,12 @@ pub fn run(spec: &ProducerSpec, project: &Path) -> Result<String> {
     let mut findings: Vec<Finding> = Vec::new();
 
     for entry in WalkDir::new(project).into_iter().filter_entry(|e| {
-        let name = e.file_name().to_string_lossy();
-        !skip_dir(&name)
+        // Only directory entries are pruned by name; a file that happens to
+        // share a name with a pruned directory is still scanned.
+        if !e.file_type().is_dir() {
+            return true;
+        }
+        !skip_dir(&e.file_name().to_string_lossy())
     }) {
         let Ok(entry) = entry else {
             continue;
@@ -171,4 +198,62 @@ pub fn run(spec: &ProducerSpec, project: &Path) -> Result<String> {
         },
     )?;
     Ok(summary)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::*;
+
+    const PEM_HEADER: &str = "-----BEGIN RSA PRIVATE KEY-----\n";
+
+    fn spec() -> &'static ProducerSpec {
+        ProducerSpec::lookup("secrets-scan").unwrap()
+    }
+
+    fn findings_count(project: &Path) -> usize {
+        let receipt_path = project
+            .join("target/autobuilder/receipts")
+            .join(spec().file_name);
+        let value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&receipt_path).unwrap()).unwrap();
+        value
+            .get("findings")
+            .and_then(serde_json::Value::as_array)
+            .expect("findings array")
+            .len()
+    }
+
+    /// A PEM private-key header sitting inside a `.venv` directory must not
+    /// be flagged — `.venv` is a pruned directory.
+    #[test]
+    fn venv_pem_header_is_pruned() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        std::fs::create_dir_all(project.join(".venv/x")).unwrap();
+        std::fs::write(project.join(".venv/x/key.pem"), PEM_HEADER).unwrap();
+        std::fs::create_dir_all(project.join("src")).unwrap();
+        std::fs::write(project.join("src/ok.rs"), "fn main() {}\n").unwrap();
+
+        run(spec(), project).unwrap();
+        assert_eq!(findings_count(project), 0, "`.venv` contents must be pruned");
+    }
+
+    /// The same PEM header, outside `.venv`, must still block.
+    #[test]
+    fn non_venv_pem_header_still_blocks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        std::fs::create_dir_all(project.join("src")).unwrap();
+        std::fs::write(project.join("src/ok.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(project.join("src/leak.pem"), PEM_HEADER).unwrap();
+
+        run(spec(), project).unwrap();
+        assert_eq!(
+            findings_count(project),
+            1,
+            "a PEM header outside a pruned dir must still be found"
+        );
+    }
 }
