@@ -33,15 +33,54 @@
 //! `merge_revert_m1_dry_run`), which need a real `git revert -m 1` and so
 //! run in a scratch worktree that is always torn down before returning;
 //! `redeploy-tag` mode never runs either check at all.
+//!
+//! `revert-commits` mode also runs a range-level check (`check_range_revert`):
+//! does `base..HEAD`, reverted as a *single* change, apply cleanly onto
+//! HEAD? That is the shape of the daemon's real future revert once a branch
+//! lands — every branch lands as ONE squash commit (`gh pr merge --squash`),
+//! so the actual rollback is `git revert <squash-sha>` against the whole
+//! range, never a per-commit revert of each original commit. Under the
+//! default `--strategy squash`, the verdict follows this range-level result
+//! (falling back to the per-commit rule only when the range itself is not
+//! individually revertable too), which no longer false-blocks a branch whose
+//! stacked commits touch overlapping lines even though the net diff reverts
+//! cleanly. `--strategy merge` restores the original per-commit-only
+//! verdict. The per-commit table and tag-lineage/mechanical-commit checks
+//! are unaffected either way.
 
 use crate::receipt;
 use anyhow::{Context, Result, anyhow};
 use clap::Args as ClapArgs;
+use clap::ValueEnum;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Which land path `revert-commits` mode's verdict is evaluated against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum Strategy {
+    /// The daemon's actual land path: `base..HEAD` becomes one squash
+    /// commit, so the verdict follows whether that range reverts cleanly
+    /// as a unit (falling back to the per-commit rule if every commit is
+    /// individually revertable too).
+    #[value(name = "squash")]
+    Squash,
+    /// Legacy behavior: ignore the range-level check, verdict is `pass`
+    /// only when every commit in the range is individually revertable.
+    #[value(name = "merge")]
+    Merge,
+}
+
+impl Strategy {
+    fn as_str(self) -> &'static str {
+        match self {
+            Strategy::Squash => "squash",
+            Strategy::Merge => "merge",
+        }
+    }
+}
 
 #[derive(Debug, ClapArgs)]
 pub(crate) struct Args {
@@ -69,6 +108,13 @@ pub(crate) struct Args {
     /// after printing; performs no git inspection and writes no receipt.
     #[arg(long)]
     pub migrate_note: bool,
+
+    /// `revert-commits` mode only: land strategy the verdict is evaluated
+    /// against: `squash` (default, matches the daemon's `gh pr merge
+    /// --squash`) or `merge` (per-commit-only, the original behavior).
+    /// Has no effect in `redeploy-tag` mode.
+    #[arg(long, value_enum, default_value = "squash")]
+    pub strategy: Strategy,
 }
 
 /// The rollback verification strategy a crate uses.
@@ -276,6 +322,31 @@ struct ReceiptDoc {
     /// range, not merely that nothing blocked. `None` otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
     range_bumps: Option<usize>,
+    /// `revert-commits` mode only — whether `base..HEAD`, reverted as a
+    /// single change (the shape of the daemon's real future `git revert
+    /// <squash-sha>`), applies cleanly onto HEAD. `None` in `redeploy-tag`
+    /// mode, where this check never runs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    range_revertable: Option<bool>,
+    /// `revert-commits` mode only — which land strategy the verdict was
+    /// evaluated against (`--strategy`): `"squash"` or `"merge"`. `None`
+    /// in `redeploy-tag` mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    land_strategy: Option<&'static str>,
+    /// `revert-commits` mode only — conflicting paths from the range-revert
+    /// check, populated only when `range_revertable` is `false`. `None`
+    /// otherwise and in `redeploy-tag` mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    range_conflict_files: Option<Vec<String>>,
+}
+
+/// Result of checking whether `base..HEAD`, reverted as a single unit (the
+/// shape of the daemon's eventual squash revert), applies cleanly onto
+/// HEAD.
+struct RangeRevertCheck {
+    range_revertable: bool,
+    conflicting_files: Vec<String>,
+    detail: String,
 }
 
 /// Resolution of the rollback base when `--base` was not given explicitly.
@@ -655,6 +726,30 @@ fn run_revert_commits(project: &Path, args: &Args, head_sha: &str) -> Result<()>
         );
     }
 
+    let range_check = check_range_revert(project, head_sha, &base_sha)?;
+    let every_commit_revertable = blocking == 0;
+    let verdict = match args.strategy {
+        // Range-level check decides it; the per-commit rule is kept as a
+        // fallback so a range that isn't range-revertable still passes when
+        // every commit is individually clean.
+        Strategy::Squash => {
+            if range_check.range_revertable || every_commit_revertable {
+                "pass"
+            } else {
+                "block"
+            }
+        }
+        // Original behavior: range_revertable is still computed/reported,
+        // but not consulted for the verdict.
+        Strategy::Merge => {
+            if every_commit_revertable {
+                "pass"
+            } else {
+                "block"
+            }
+        }
+    };
+
     let rollback_md_rel = PathBuf::from("target/autobuilder/rollback.md");
     let rollback_md_abs = project.join(&rollback_md_rel);
     let base_info = BaseInfo {
@@ -663,10 +758,9 @@ fn run_revert_commits(project: &Path, args: &Args, head_sha: &str) -> Result<()>
         tag: base_tag.as_deref(),
         note: base_note.as_deref(),
     };
-    write_rollback_md(&rollback_md_abs, head_sha, &base_info, &entries)?;
+    write_rollback_md(&rollback_md_abs, head_sha, &base_info, &entries, args.strategy, &range_check)?;
 
     let revertable_count = entries.iter().filter(|e| e.revertable).count();
-    let verdict = if blocking == 0 { "pass" } else { "block" };
 
     if args.explain {
         println!(
@@ -708,24 +802,35 @@ fn run_revert_commits(project: &Path, args: &Args, head_sha: &str) -> Result<()>
         head_version: None,
         base_version: None,
         range_bumps: None,
+        range_revertable: Some(range_check.range_revertable),
+        land_strategy: Some(args.strategy.as_str()),
+        range_conflict_files: if range_check.conflicting_files.is_empty() {
+            None
+        } else {
+            Some(range_check.conflicting_files.clone())
+        },
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
     receipt::write(&receipt_path, value)?;
 
     println!(
-        "rollback-plan: head={head_sha} base={base_ref}{} commits={} revertable={revertable_count} mechanical={mechanical_count} verdict={verdict}",
+        "rollback-plan: head={head_sha} base={base_ref}{} strategy={} commits={} revertable={revertable_count} mechanical={mechanical_count} range_revertable={} verdict={verdict}",
         base_tag
             .as_deref()
             .map(|t| format!(" base_tag={t}"))
             .or_else(|| base_note.clone().map(|n| format!(" {n}")))
             .unwrap_or_default(),
-        doc.commit_count
+        args.strategy.as_str(),
+        doc.commit_count,
+        range_check.range_revertable,
     );
 
-    if blocking > 0 {
+    if verdict == "block" {
         return Err(anyhow!(
-            "{blocking} of {} commits are not git-revert-clean; see {}",
+            "rollback-plan blocked (strategy={}): range_revertable={}, {blocking} of {} commits individually revertable; see {}",
+            args.strategy.as_str(),
+            range_check.range_revertable,
             doc.commit_count,
             rollback_md_rel.display()
         ));
@@ -1149,6 +1254,9 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
         head_version: if pass_reason.is_some() { head_version.clone() } else { None },
         base_version: if pass_reason.is_some() { base_version.clone() } else { None },
         range_bumps: if pass_reason.is_some() { Some(0) } else { None },
+        range_revertable: None,
+        land_strategy: None,
+        range_conflict_files: None,
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
@@ -1226,6 +1334,9 @@ fn finish_redeploy_block(
         head_version: None,
         base_version: None,
         range_bumps: None,
+        range_revertable: None,
+        land_strategy: None,
+        range_conflict_files: None,
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
@@ -1494,6 +1605,97 @@ fn merge_tree_revert_dry_run(project: &Path, sha: &str, first_parent: &str) -> R
     Ok((clean, note))
 }
 
+/// Verify that `base..HEAD`, reverted as a *single* change (the shape of
+/// the daemon's real `git revert <squash-sha>` once the branch lands),
+/// applies cleanly onto HEAD. `revert-commits` mode only.
+///
+/// When `base` is a direct ancestor of `HEAD` — the normal case, since the
+/// future squash commit's parent will be exactly `base` — reverting it the
+/// moment it lands is a revert at the tip: `ours` (HEAD) has no changes
+/// relative to the thing being reverted, so the 3-way merge trivially
+/// resolves to `theirs` (base) with no conflict possible. That is the
+/// point of this check: unlike the per-commit checks, it does not
+/// false-block on commits that merely touch overlapping lines of each
+/// other but whose net diff reverts cleanly.
+///
+/// When `base` has moved past the branch's actual fork point (e.g. `main`
+/// gained unrelated commits after the branch was cut), the check instead
+/// verifies the range against the true common ancestor, which *can*
+/// legitimately conflict if base's new commits touch the same lines as
+/// this range.
+fn check_range_revert(project: &Path, head_sha: &str, base_sha: &str) -> Result<RangeRevertCheck> {
+    let Ok(fork_point) = run_git(project, &["merge-base", base_sha, head_sha]) else {
+        return Ok(RangeRevertCheck {
+            range_revertable: false,
+            conflicting_files: Vec::new(),
+            detail: "no common ancestor between --base and HEAD; cannot evaluate the range revert"
+                .to_owned(),
+        });
+    };
+    let fork_point = fork_point.trim();
+
+    if fork_point == base_sha {
+        let merge_arg = format!("--merge-base={head_sha}");
+        let (status, stdout, _stderr) = run_git_capturing(
+            project,
+            &["merge-tree", "--write-tree", &merge_arg, head_sha, base_sha],
+        )?;
+        return Ok(RangeRevertCheck {
+            range_revertable: status == 0,
+            conflicting_files: if status == 0 { Vec::new() } else { conflicting_files_from(&stdout) },
+            detail: if status == 0 {
+                "base is a direct ancestor of HEAD; the squash commit's parent will be base, so \
+                 reverting it immediately after it lands is clean by construction"
+                    .to_owned()
+            } else {
+                "unexpected conflict reverting the range onto HEAD".to_owned()
+            },
+        });
+    }
+
+    // base has drifted past the branch's fork point — a real 3-way merge
+    // against the true common ancestor, which can conflict.
+    let merge_arg = format!("--merge-base={fork_point}");
+    let (status, stdout, _stderr) = run_git_capturing(
+        project,
+        &["merge-tree", "--write-tree", &merge_arg, head_sha, base_sha],
+    )?;
+    Ok(RangeRevertCheck {
+        range_revertable: status == 0,
+        conflicting_files: if status == 0 { Vec::new() } else { conflicting_files_from(&stdout) },
+        detail: if status == 0 {
+            format!(
+                "base has moved past the branch's fork point ({}); the range is still compatible with current base",
+                short(fork_point)
+            )
+        } else {
+            format!(
+                "base has moved past the branch's fork point ({}) with changes that conflict with this range",
+                short(fork_point)
+            )
+        },
+    })
+}
+
+/// Parse the conflicted-path list out of `git merge-tree --write-tree`'s
+/// stdout. On conflict it prints one `<mode> <oid> <stage>\t<path>` line per
+/// stage ahead of the `Auto-merging`/`CONFLICT` summary lines.
+fn conflicting_files_from(stdout: &str) -> Vec<String> {
+    let mut files = Vec::new();
+    for line in stdout.lines() {
+        let Some((meta, path)) = line.split_once('\t') else { continue };
+        let mut fields = meta.split_whitespace();
+        let (Some(_mode), Some(_oid), Some(_stage)) = (fields.next(), fields.next(), fields.next()) else {
+            continue;
+        };
+        let path = path.to_owned();
+        if !files.contains(&path) {
+            files.push(path);
+        }
+    }
+    files
+}
+
 /// Verifies a merge commit's `-m 1` revert-cleanliness with a real `git
 /// revert --no-commit -m 1` inside a scratch worktree — `git revert` needs
 /// an actual index/working tree, unlike the `merge-tree`-based dry run used
@@ -1554,11 +1756,14 @@ fn commit_files(project: &Path, sha: &str) -> Result<Vec<String>> {
         .collect())
 }
 
+#[allow(clippy::too_many_arguments)] // mirrors write_redeploy_md's precedent; strategy + range_check are each independently needed for the new section
 fn write_rollback_md(
     path: &Path,
     head_sha: &str,
     base: &BaseInfo<'_>,
     entries: &[CommitEntry],
+    strategy: Strategy,
+    range_check: &RangeRevertCheck,
 ) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -1573,12 +1778,38 @@ fn write_rollback_md(
     if let Some(note) = base.note {
         out.push_str(&format!("Base note: {note}\n"));
     }
+    out.push_str(&format!("Strategy: `{}`\n\n", strategy.as_str()));
+
+    out.push_str("## Squash revert\n\n");
+    out.push_str("The daemon lands this branch as one squash commit, so the real future\n");
+    out.push_str("revert is:\n\n");
+    out.push_str("```\n");
+    out.push_str("git revert <squash-sha>\n");
+    out.push_str("```\n\n");
+    out.push_str(
+        "(use `git revert -m 1 <squash-sha>` instead if that commit is ever created as a merge commit.)\n\n",
+    );
+    out.push_str(&format!(
+        "Range revert result: **{}**\n\n",
+        if range_check.range_revertable { "clean" } else { "CONFLICTS" }
+    ));
+    out.push_str(&format!("{}\n", range_check.detail));
+    if !range_check.conflicting_files.is_empty() {
+        out.push_str("\nConflicting files:\n\n");
+        for f in &range_check.conflicting_files {
+            out.push_str(&format!("- `{f}`\n"));
+        }
+    }
     out.push('\n');
+
+    out.push_str("## Per-commit detail\n\n");
     out.push_str("Reverts are listed newest → oldest. Each `git revert` was\n");
     out.push_str("dry-run via `git merge-tree --write-tree` against current HEAD\n");
     out.push_str("(merge commits use a real `git revert -m 1` in a scratch\n");
     out.push_str("worktree instead), so the caller's working tree was never touched\n");
-    out.push_str("during verification.\n\n");
+    out.push_str("during verification. Under `--strategy squash` this table is\n");
+    out.push_str("informational — the verdict follows the squash revert above unless\n");
+    out.push_str("it could not be evaluated.\n\n");
     if entries.is_empty() {
         out.push_str("No commits in range.\n");
     } else {
@@ -1618,7 +1849,7 @@ fn write_rollback_md(
              supersede earlier ones), or `mechanical(merge)` (a ≥2-parent commit whose `-m 1` \
              revert is clean) — non-revert-clean but excluded from `blocking_count`/`verdict`.\n",
         );
-        out.push_str("\n## Notes\n\n");
+        out.push_str("\n### Notes\n\n");
         for e in entries {
             out.push_str(&format!("- `{}` — {}\n", e.short_sha, e.note));
         }
