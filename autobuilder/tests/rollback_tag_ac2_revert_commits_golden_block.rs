@@ -61,8 +61,14 @@ fn conflicting_fixture() -> (TempDir, std::path::PathBuf) {
 fn ac2_one_non_revert_clean_commit_blocks_like_the_pre_change_golden() {
     let (_tmp, project) = conflicting_fixture();
 
+    // `--strategy merge` pins the pre-squash-range-revert golden: base is a
+    // direct ancestor of HEAD here, so under the new default `--strategy
+    // squash` the range-level check (base..HEAD reverted as one change)
+    // is trivially clean and this fixture now PASSES -- exactly the false-
+    // block this PRD fixes. `merge` reproduces the original per-commit-only
+    // verdict this test is pinning.
     let out = autobuilder()
-        .args(["rollback-plan", "--project", project.to_str().unwrap()])
+        .args(["rollback-plan", "--project", project.to_str().unwrap(), "--strategy", "merge"])
         .output()
         .unwrap();
     assert!(!out.status.success(), "expected block (non-zero exit)");
@@ -88,4 +94,5 @@ fn ac2_one_non_revert_clean_commit_blocks_like_the_pre_change_golden() {
     assert_eq!(v["rollback_model"], "revert-commits");
     assert!(v.get("rollback_target").is_none() || v["rollback_target"].is_null());
     assert!(v.get("tag_lineage").is_none() || v["tag_lineage"].is_null());
+    assert_eq!(v["land_strategy"], "merge");
 }

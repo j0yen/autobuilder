@@ -109,6 +109,11 @@ fn chainmember_ac1_middle_member_non_revert_clean_excluded_and_blocking() {
     fs::write(project.join("www/index.html"), "relaunch content\n").unwrap();
     commit_all(project, "www: relaunch page");
 
+    // `--strategy merge`: `base` is a direct ancestor of HEAD, so under the
+    // default `--strategy squash` the range-level revert check is trivially
+    // clean and this fixture would now PASS -- this AC specifically pins
+    // the per-commit chain-member classification, which `merge` still
+    // evaluates for the verdict.
     let out = autobuilder()
         .args([
             "rollback-plan",
@@ -116,6 +121,8 @@ fn chainmember_ac1_middle_member_non_revert_clean_excluded_and_blocking() {
             project.to_str().unwrap(),
             "--base",
             &base,
+            "--strategy",
+            "merge",
         ])
         .output()
         .unwrap();

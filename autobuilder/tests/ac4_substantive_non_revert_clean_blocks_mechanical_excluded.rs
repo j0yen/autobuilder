@@ -97,6 +97,11 @@ fn ac4_substantive_non_revert_clean_blocks_mechanical_excluded() {
     fs::write(project.join("src/lib.rs"), "3\n").unwrap();
     commit_all(project, "src: update helper");
 
+    // `--strategy merge`: `base` is a direct ancestor of HEAD, so under the
+    // default `--strategy squash` the range-level revert check is trivially
+    // clean and this fixture would now PASS -- this AC specifically pins
+    // the per-commit mechanical-vs-substantive classification, which
+    // `merge` still evaluates for the verdict.
     let out = autobuilder()
         .args([
             "rollback-plan",
@@ -104,6 +109,8 @@ fn ac4_substantive_non_revert_clean_blocks_mechanical_excluded() {
             project.to_str().unwrap(),
             "--base",
             &base,
+            "--strategy",
+            "merge",
         ])
         .output()
         .unwrap();
