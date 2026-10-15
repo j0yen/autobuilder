@@ -944,12 +944,20 @@ enum PendingTag {
 
 /// Whether `message` has a line announcing `release: <version>` (optionally
 /// `release: v<version>`). A squash merge keeps the land's
-/// `release: <ver>` commit message in the BODY, a plain land has it as the
-/// subject; either way it is a line that starts with the marker and is not
-/// a longer version (`0.108.40`).
+/// `release: <ver>` commit message in the BODY (as its own paragraph, or as
+/// a `* release: <ver>` / `- release: <ver>` bullet of the squashed subjects),
+/// a plain land has it as the subject; either way it is a line that starts
+/// with the marker (after an optional bullet) and is not a longer version
+/// (`0.108.40`).
 fn message_has_release_line(message: &str, version: &str) -> bool {
     message.lines().any(|line| {
         let line = line.trim();
+        // A squash merge body lists each squashed commit subject as a
+        // bullet (`* release: 0.108.17`); accept a leading `* ` / `- `.
+        let line = line
+            .strip_prefix('*')
+            .or_else(|| line.strip_prefix('-'))
+            .map_or(line, str::trim_start);
         let Some(rest) = line.strip_prefix("release:") else {
             return false;
         };
