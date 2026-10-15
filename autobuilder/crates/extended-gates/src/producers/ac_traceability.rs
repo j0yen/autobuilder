@@ -20,6 +20,9 @@
 //! numbered lines under a `## Acceptance criteria` heading (also spelled
 //! `## Acceptance` or `## Acceptance tests`), e.g. `1. P0 — Given …`. Each
 //! such numbered line under that heading yields `AC<N>` (line 1 → `AC1`).
+//! When a PRD has such a numbered section it is the only id source (free-text
+//! tokens like `(AC1-7 squash)` never add ids); token ids are the fallback
+//! for PRDs without one.
 //!
 //! Pairing also accepts ac-judge 0.2.1's file-naming convention: a test file
 //! named `tests/ac<N>_*.rs` or the zero-padded `tests/ac<0N>_*.rs` (e.g.
@@ -140,10 +143,16 @@ fn extract_numbered_ac_ids(prd: &str) -> BTreeSet<String> {
     out
 }
 
+/// The numbered AC list is the authoritative contract: when present it is the
+/// only id source, so prose such as `(AC1-7 squash)` cannot add phantom ids.
+/// PRDs without a numbered section fall back to free-text `AC<N>` tokens.
 fn extract_ac_ids(prd: &str) -> BTreeSet<String> {
-    let mut out = extract_token_ac_ids(prd);
-    out.extend(extract_numbered_ac_ids(prd));
-    out
+    let numbered = extract_numbered_ac_ids(prd);
+    if numbered.is_empty() {
+        extract_token_ac_ids(prd)
+    } else {
+        numbered
+    }
 }
 
 fn collect_test_text(project: &Path) -> Vec<(PathBuf, String)> {
@@ -337,17 +346,28 @@ Some intro text.
     }
 
     #[test]
-    fn extract_ac_ids_unions_token_and_numbered_forms() {
-        let prd = "\
-AC-legacy1 is referenced in prose.
+    fn extract_ac_ids_numbered_section_is_the_only_source() {
+        let mut prd = String::from(
+            "# PRD\n\nLand as one commit (AC1-7 squash); see also AC 3-4 and AC-legacy1.\n\n## Acceptance criteria\n\n",
+        );
+        for n in 1..=7 {
+            prd.push_str(&format!("{n}. P0 — Given a, when b, then c{n}.\n"));
+        }
+        prd.push_str("\n## Notes\n\nAC9 appears only in prose.\n");
+        let ids = extract_ac_ids(&prd);
+        let expected: BTreeSet<String> = (1..=7).map(|n| format!("AC{n}")).collect();
+        assert_eq!(ids, expected);
+        assert!(ids.iter().all(|id| !id.contains('-')));
+    }
 
-## Acceptance criteria
-
-1. P0 — Given a, when b, then c.
-";
+    #[test]
+    fn extract_ac_ids_falls_back_to_tokens_without_numbered_section() {
+        let prd = "AC1 (MUST): foo.\nAC-legacy1 is referenced in prose.\n";
         let ids = extract_ac_ids(prd);
-        assert!(ids.contains("AC-legacy1"));
-        assert!(ids.contains("AC1"));
+        assert_eq!(
+            ids,
+            BTreeSet::from(["AC-legacy1".to_owned(), "AC1".to_owned()])
+        );
     }
 
     #[test]
