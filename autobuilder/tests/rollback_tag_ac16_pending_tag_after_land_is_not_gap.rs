@@ -120,3 +120,62 @@ fn ac16_release_line_with_no_tag_anywhere_is_no_previous_tag() {
     assert_eq!(v["verdict"], "block", "receipt: {v}");
     assert_eq!(v["block_reason"], "no-previous-tag", "receipt: {v}");
 }
+
+/// Real 056b407f shape: the squash body lists each squashed commit subject
+/// as a `* `-prefixed bullet, including `* release: <ver>`.
+fn squash_body(bullet: &str, release: &str) -> String {
+    format!("{bullet} PRD — x: implement\n{bullet} {release}\n{bullet} chore: regen")
+}
+
+#[test]
+fn ac16_squash_body_star_bullet_release_line_passes_with_pending_tag() {
+    let tmp = TempDir::new().unwrap();
+    let body = squash_body("*", "release: 0.108.4");
+    let (project, base) = fixture(&tmp, true, &["loop: x (#298)", &body]);
+    let (ok, v) = run(&project, &base);
+    assert!(ok, "expected pass (pending tag, bulleted release line); receipt: {v}");
+    assert_eq!(v["verdict"], "pass", "receipt: {v}");
+    assert_eq!(v["pending_tag"], "v0.108.4", "receipt: {v}");
+    assert_eq!(v["rollback_target"]["tag"], "v0.108.0", "receipt: {v}");
+}
+
+#[test]
+fn ac16_squash_body_dash_bullet_release_line_passes_with_pending_tag() {
+    let tmp = TempDir::new().unwrap();
+    let body = squash_body("-", "release: 0.108.4");
+    let (project, base) = fixture(&tmp, true, &["loop: x (#298)", &body]);
+    let (ok, v) = run(&project, &base);
+    assert!(ok, "expected pass (pending tag, dash bullet); receipt: {v}");
+    assert_eq!(v["pending_tag"], "v0.108.4", "receipt: {v}");
+}
+
+#[test]
+fn ac16_squash_body_bullet_with_other_version_is_still_gap() {
+    let tmp = TempDir::new().unwrap();
+    let body = squash_body("*", "release: 0.108.3");
+    let (project, base) = fixture(&tmp, true, &["loop: x (#298)", &body]);
+    let (ok, v) = run(&project, &base);
+    assert!(!ok, "expected block; receipt: {v}");
+    assert_eq!(v["block_reason"], "tag-lineage-gap", "receipt: {v}");
+    assert!(v.get("pending_tag").is_none(), "receipt: {v}");
+}
+
+#[test]
+fn ac16_squash_body_wrong_case_bullet_is_still_gap() {
+    let tmp = TempDir::new().unwrap();
+    let body = squash_body("*", "Release: 0.108.4");
+    let (project, base) = fixture(&tmp, true, &["loop: x (#298)", &body]);
+    let (ok, v) = run(&project, &base);
+    assert!(!ok, "expected block; receipt: {v}");
+    assert_eq!(v["block_reason"], "tag-lineage-gap", "receipt: {v}");
+}
+
+#[test]
+fn ac16_squash_body_bullet_longer_version_is_still_gap() {
+    let tmp = TempDir::new().unwrap();
+    let body = squash_body("*", "release: 0.108.40");
+    let (project, base) = fixture(&tmp, true, &["loop: x (#298)", &body]);
+    let (ok, v) = run(&project, &base);
+    assert!(!ok, "expected block; receipt: {v}");
+    assert_eq!(v["block_reason"], "tag-lineage-gap", "receipt: {v}");
+}
