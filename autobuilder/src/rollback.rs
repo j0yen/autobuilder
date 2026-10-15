@@ -338,6 +338,15 @@ struct ReceiptDoc {
     /// otherwise and in `redeploy-tag` mode.
     #[serde(skip_serializing_if = "Option::is_none")]
     range_conflict_files: Option<Vec<String>>,
+    /// `redeploy-tag` only — set when the base's own version tag does not
+    /// exist yet because a land's release commit is still waiting for its
+    /// deploy unit to tag it (`v<base version>`). The pass is then judged
+    /// against `rollback_target` (the newest tagged ancestor).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pending_tag: Option<String>,
+    /// Human note accompanying `pending_tag`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
 }
 
 /// Result of checking whether `base..HEAD`, reverted as a single unit (the
@@ -809,6 +818,8 @@ fn run_revert_commits(project: &Path, args: &Args, head_sha: &str) -> Result<()>
         } else {
             Some(range_check.conflicting_files.clone())
         },
+        pending_tag: None,
+        note: None,
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
@@ -916,6 +927,86 @@ fn commits_between(project: &Path, from: &str, to: &str) -> Result<usize> {
     out.trim()
         .parse::<usize>()
         .with_context(|| format!("git rev-list --count {from}..{to} produced non-numeric output: {out:?}"))
+}
+
+/// Outcome of the pending-tag check for a base whose own version tag does
+/// not exist yet.
+enum PendingTag {
+    /// `v<base version>` is waiting to be created at the land's release
+    /// commit; the rollback target is the newest tagged ancestor.
+    Pending { pending_tag: String, rollback_tag: String, rollback_sha: String, release_sha: String },
+    /// A land release commit carries the base version but no `v<semver>` tag
+    /// is reachable from base at all.
+    NoTaggedAncestor,
+    /// No land release commit introduces the base version (a hand bump).
+    NotPending,
+}
+
+/// Whether `message` has a line announcing `release: <version>` (optionally
+/// `release: v<version>`). A squash merge keeps the land's
+/// `release: <ver>` commit message in the BODY, a plain land has it as the
+/// subject; either way it is a line that starts with the marker and is not
+/// a longer version (`0.108.40`).
+fn message_has_release_line(message: &str, version: &str) -> bool {
+    message.lines().any(|line| {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("release:") else {
+            return false;
+        };
+        let rest = rest.trim_start();
+        let rest = rest.strip_prefix('v').unwrap_or(rest);
+        rest.strip_prefix(version)
+            .is_some_and(|tail| tail.chars().next().is_none_or(|c| !(c.is_ascii_digit() || c == '.')))
+    })
+}
+
+/// The base's version has no tag at base or any ancestor. When that is only
+/// because a land's squash merge (carrying `release: <version>`) has not been
+/// tagged yet by the deploy unit, return the newest tagged ancestor as the
+/// rollback target instead of reporting a lineage gap. Walks first-parent
+/// history from `base_sha` back to the newest `v<semver>` tag, looking for
+/// the commit that introduced `version` and checking its message.
+fn detect_pending_tag(project: &Path, base_sha: &str, version: &str) -> Result<PendingTag> {
+    let want = format!("v{version}");
+    // A tag that exists but is not an ancestor is a real conflict, not a
+    // pending tag.
+    if resolve_tag_commit(project, &want).is_some() {
+        return Ok(PendingTag::NotPending);
+    }
+    let commits = run_git(project, &["rev-list", "--first-parent", base_sha])?;
+    let mut release_sha: Option<String> = None;
+    for sha in commits.lines().map(str::trim).filter(|s| !s.is_empty()) {
+        if release_sha.is_none()
+            && cargo_version_at(project, sha).as_deref() == Some(version)
+            && cargo_version_at(project, &format!("{sha}^")).as_deref() != Some(version)
+        {
+            let message = run_git(project, &["log", "-1", "--format=%B", sha])?;
+            if message_has_release_line(&message, version) {
+                release_sha = Some(sha.to_owned());
+            } else {
+                // The commit that introduced this version is a hand bump.
+                return Ok(PendingTag::NotPending);
+            }
+        }
+        let tags_out = run_git(project, &["tag", "--points-at", sha])?;
+        let mut candidates: Vec<&str> =
+            tags_out.lines().map(str::trim).filter(|t| is_version_tag(t)).collect();
+        if candidates.is_empty() {
+            continue;
+        }
+        candidates.sort_by_key(|t| std::cmp::Reverse(version_key(t)));
+        let Some(release_sha) = release_sha else {
+            return Ok(PendingTag::NotPending);
+        };
+        let rollback_tag = (*candidates.first().unwrap_or(&"")).to_owned();
+        return Ok(PendingTag::Pending {
+            pending_tag: want,
+            rollback_tag,
+            rollback_sha: sha.to_owned(),
+            release_sha,
+        });
+    }
+    Ok(if release_sha.is_some() { PendingTag::NoTaggedAncestor } else { PendingTag::NotPending })
 }
 
 /// Whether HEAD can serve as a `redeploy-tag` rollback endpoint.
@@ -1031,6 +1122,9 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
     // genuine gap, same as no tag at all.
     let mut base_tag_commit: Option<String> = None;
     let mut base_tag_distance: Option<usize> = None;
+    let mut pending_tag: Option<String> = None;
+    let mut pending_note: Option<String> = None;
+    let mut pending_target: Option<(String, String)> = None;
     if let Some(base_version) = cargo_version_at(project, &base_sha) {
         let want = format!("v{base_version}");
         let tagged_at_base = run_git(project, &["tag", "--points-at", &base_sha])?
@@ -1050,6 +1144,44 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
                     base_tag_distance = Some(commits_between(project, &tag_commit, &base_sha)?);
                     base_tag_commit = Some(tag_commit);
                     tolerated = true;
+                }
+            }
+            if !tolerated {
+                // A land's squash merge bumps Cargo.toml and carries
+                // `release: <version>`; the deploy unit tags it minutes
+                // later. In that window the base is untagged but not a
+                // lineage gap.
+                match detect_pending_tag(project, &base_sha, &base_version)? {
+                    PendingTag::Pending { pending_tag: pt, rollback_tag, rollback_sha, release_sha } => {
+                        pending_note = Some(format!(
+                            "tag {pt} is pending at commit {} (release commit for {base_version}); \
+                             rollback target is the newest tagged ancestor {rollback_tag}",
+                            short(&release_sha)
+                        ));
+                        pending_target = Some((rollback_tag, rollback_sha));
+                        pending_tag = Some(pt);
+                        tolerated = true;
+                    }
+                    PendingTag::NoTaggedAncestor => {
+                        let base = BaseInfo {
+                            git_ref: &base_ref,
+                            sha: &base_sha,
+                            tag: None,
+                            note: base_note.as_deref(),
+                        };
+                        return finish_redeploy_block(
+                            project,
+                            &rollback_md_abs,
+                            &rollback_md_rel,
+                            head_sha,
+                            &base,
+                            "no-previous-tag",
+                            "no previous version tag is reachable from base; nothing to redeploy to yet",
+                            &[],
+                            args.explain,
+                        );
+                    }
+                    PendingTag::NotPending => {}
                 }
             }
             if !tolerated {
@@ -1202,10 +1334,11 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
             .unwrap_or("crate")
             .to_owned()
     });
+    let (target_tag, target_sha) = pending_target.clone().unwrap_or_else(|| (previous_tag.clone(), base_sha.clone()));
     let target = RollbackTarget {
-        tag: previous_tag.clone(),
-        sha: base_sha.clone(),
-        redeploy_command: format!("{package}-deploy redeploy --tag {previous_tag}"),
+        redeploy_command: format!("{package}-deploy redeploy --tag {target_tag}"),
+        tag: target_tag,
+        sha: target_sha,
     };
 
     let base = BaseInfo {
@@ -1215,6 +1348,11 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
         note: base_note.as_deref(),
     };
     write_redeploy_md(&rollback_md_abs, head_sha, &base, "pass", None, Some(&target), &lineage)?;
+    if let Some(note) = &pending_note {
+        use std::io::Write as _;
+        let mut f = fs::OpenOptions::new().append(true).open(&rollback_md_abs)?;
+        writeln!(f, "\nPending tag: {note}")?;
+    }
 
     if args.explain {
         println!(
@@ -1257,6 +1395,8 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
         range_revertable: None,
         land_strategy: None,
         range_conflict_files: None,
+        pending_tag: pending_tag.clone(),
+        note: pending_note.clone(),
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
@@ -1337,6 +1477,8 @@ fn finish_redeploy_block(
         range_revertable: None,
         land_strategy: None,
         range_conflict_files: None,
+        pending_tag: None,
+        note: None,
     };
     let value = serde_json::to_value(&doc)?;
     let receipt_path = project.join("target/autobuilder/receipts/rollback-plan.json");
