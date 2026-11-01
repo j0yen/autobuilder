@@ -287,7 +287,8 @@ struct ReceiptDoc {
     #[serde(skip_serializing_if = "Option::is_none")]
     tag_lineage: Option<Vec<TagLineageEntry>>,
     /// v2: `redeploy-tag` only — machine-readable block reason
-    /// (`no-previous-tag` | `tag-lineage-gap` | `head-untagged`).
+    /// (`no-previous-tag` | `tag-lineage-gap` | `head-untagged` |
+    /// `version-regression-below-base`).
     #[serde(skip_serializing_if = "Option::is_none")]
     block_reason: Option<&'static str>,
     /// v2: `redeploy-tag` only — human detail for `block_reason`.
@@ -387,6 +388,15 @@ fn version_key(tag: &str) -> (u64, u64, u64) {
     let minor = parts.next().unwrap_or(0);
     let patch = parts.next().unwrap_or(0);
     (major, minor, patch)
+}
+
+/// Sort key for a bare `Cargo.toml` version: `1.2.3` -> `Some((1, 2, 3))`.
+/// `None` for anything that is not exactly three all-digit components
+/// (pre-release or build suffixes), which the below-base rules leave to
+/// today's tag-based classification.
+fn strict_version_key(version: &str) -> Option<(u64, u64, u64)> {
+    let tag = format!("v{version}");
+    is_version_tag(&tag).then(|| version_key(&tag))
 }
 
 /// Walk first-parent history from HEAD backward and return the newest
@@ -1244,12 +1254,71 @@ fn run_redeploy_tag(project: &Path, args: &Args, head_sha: &str) -> Result<()> {
     // entry whose version was NEVER tagged anywhere — on this commit or
     // any other — is a genuine lineage gap: reachable from base, released
     // nowhere.
+    //
+    // rplb (autobuilder 0.9.2): a bump strictly BELOW base's own version is
+    // never a release target — it was made before a merge of main brought
+    // the branch up to base, so it can only be a superseded bump. It is
+    // classified `superseded-below-base` and never blocks, but only while
+    // HEAD itself is at or above base: a final tree below base would land
+    // a version regression on main, which blocks as
+    // `version-regression-below-base`.
+    let base_ver = cargo_version_at(project, &base_sha);
+    let head_ver = cargo_version_at(project, head_sha);
+    // An unreadable base version leaves the below-base rules out and today's
+    // rules in force; the reason is printed so the receipt reader sees it.
+    if base_ver.is_none() {
+        println!(
+            "rollback-plan: info: base-version-unreadable base={} has no Cargo.toml [package].version; \
+             below-base rules not applied",
+            short(&base_sha)
+        );
+    }
+    let base_str = base_ver.as_deref().unwrap_or_default();
+    let base_key = base_ver.as_deref().and_then(strict_version_key);
+    let head_key = head_ver.as_deref().and_then(strict_version_key);
+    if let (Some(hk), Some(bk), Some(hv)) = (head_key, base_key, head_ver.as_deref()) {
+        if hk < bk {
+            let base = BaseInfo {
+                git_ref: &base_ref,
+                sha: &base_sha,
+                tag: Some(&previous_tag),
+                note: base_note.as_deref(),
+            };
+            let detail = format!(
+                "HEAD version {hv} is below base version {base_str}; landing this branch would \
+                 regress the version on the target branch"
+            );
+            return finish_redeploy_block(
+                project,
+                &rollback_md_abs,
+                &rollback_md_rel,
+                head_sha,
+                &base,
+                "version-regression-below-base",
+                &detail,
+                &lineage,
+                args.explain,
+            );
+        }
+    }
+    let head_at_or_above_base = matches!((head_key, base_key), (Some(hk), Some(bk)) if hk >= bk);
+
     let last_idx = lineage.len().checked_sub(1);
     let mut superseded = 0usize;
     let mut real_gap = None;
     for (idx, entry) in lineage.iter().enumerate() {
         if entry.tag.is_some() || Some(idx) == last_idx {
             continue;
+        }
+        if let (true, Some(ek), Some(bk)) = (head_at_or_above_base, strict_version_key(&entry.version), base_key) {
+            if ek < bk {
+                println!(
+                    "rollback-plan: info: superseded-below-base commit={} version={} base_version={base_str}",
+                    entry.commit_short, entry.version
+                );
+                superseded += 1;
+                continue;
+            }
         }
         if tag_exists_anywhere(project, &entry.version)? {
             superseded += 1;
