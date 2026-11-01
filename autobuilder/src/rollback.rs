@@ -1906,30 +1906,8 @@ fn commit_files(project: &Path, sha: &str) -> Result<Vec<String>> {
         .collect())
 }
 
-#[allow(clippy::too_many_arguments)] // mirrors write_redeploy_md's precedent; strategy + range_check are each independently needed for the new section
-fn write_rollback_md(
-    path: &Path,
-    head_sha: &str,
-    base: &BaseInfo<'_>,
-    entries: &[CommitEntry],
-    strategy: Strategy,
-    range_check: &RangeRevertCheck,
-) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut out = String::new();
-    out.push_str("# Rollback plan\n\n");
-    out.push_str(&format!("HEAD: `{head_sha}`\n"));
-    out.push_str(&format!("Base: `{}` (`{}`)\n", base.git_ref, base.sha));
-    if let Some(tag) = base.tag {
-        out.push_str(&format!("Base tag: `{tag}`\n"));
-    }
-    if let Some(note) = base.note {
-        out.push_str(&format!("Base note: {note}\n"));
-    }
-    out.push_str(&format!("Strategy: `{}`\n\n", strategy.as_str()));
-
+/// The "Squash revert" section of the rollback plan.
+fn append_squash_revert(out: &mut String, range_check: &RangeRevertCheck) {
     out.push_str("## Squash revert\n\n");
     out.push_str("The daemon lands this branch as one squash commit, so the real future\n");
     out.push_str("revert is:\n\n");
@@ -1951,7 +1929,10 @@ fn write_rollback_md(
         }
     }
     out.push('\n');
+}
 
+/// The "Per-commit detail" section of the rollback plan.
+fn append_per_commit_detail(out: &mut String, entries: &[CommitEntry]) {
     out.push_str("## Per-commit detail\n\n");
     out.push_str("Reverts are listed newest → oldest. Each `git revert` was\n");
     out.push_str("dry-run via `git merge-tree --write-tree` against current HEAD\n");
@@ -2004,6 +1985,35 @@ fn write_rollback_md(
             out.push_str(&format!("- `{}` — {}\n", e.short_sha, e.note));
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)] // mirrors write_redeploy_md's precedent; strategy + range_check are each independently needed for the new section
+fn write_rollback_md(
+    path: &Path,
+    head_sha: &str,
+    base: &BaseInfo<'_>,
+    entries: &[CommitEntry],
+    strategy: Strategy,
+    range_check: &RangeRevertCheck,
+) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut out = String::new();
+    out.push_str("# Rollback plan\n\n");
+    out.push_str(&format!("HEAD: `{head_sha}`\n"));
+    out.push_str(&format!("Base: `{}` (`{}`)\n", base.git_ref, base.sha));
+    if let Some(tag) = base.tag {
+        out.push_str(&format!("Base tag: `{tag}`\n"));
+    }
+    if let Some(note) = base.note {
+        out.push_str(&format!("Base note: {note}\n"));
+    }
+    out.push_str(&format!("Strategy: `{}`\n\n", strategy.as_str()));
+
+    append_squash_revert(&mut out, range_check);
+
+    append_per_commit_detail(&mut out, entries);
     fs::write(path, out)?;
     Ok(())
 }
