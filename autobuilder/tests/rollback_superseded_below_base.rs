@@ -165,3 +165,37 @@ fn f_unreadable_base_version_keeps_todays_block_and_prints_reason() {
     assert_eq!(v["verdict"], "block", "receipt: {v}");
     assert_eq!(v["block_reason"], "head-untagged", "today's reason is kept: {v}");
 }
+
+/// g: an untagged bump EQUAL to base's version is not "strictly below base":
+/// it must not be classified `superseded-below-base` (`<`, not `<=`). It is
+/// still forgiven, but through the tag-exists-anywhere path (base's own
+/// `v0.3.0` tag), so the verdict passes and counts it as superseded.
+#[test]
+fn g_bump_equal_to_base_is_not_classified_below_base() {
+    let tmp = TempDir::new().unwrap();
+    let project = fixture_with_tagged_base(&tmp, "0.3.0");
+
+    write_cargo_toml(&project, "0.2.9");
+    commit_all(&project, "release: 0.2.9");
+    write_cargo_toml(&project, "0.3.0");
+    commit_all(&project, "release: 0.3.0 (equal to base)");
+    write_cargo_toml(&project, "0.3.1");
+    commit_all(&project, "release: 0.3.1");
+    git(&project, &["tag", "v0.3.1"]);
+
+    let out = rollback_plan(&project, "v0.3.0");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "expected pass; stdout={stdout} stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout.contains("superseded-below-base") && stdout.contains("version=0.2.9"), "0.2.9 is below base: {stdout}");
+    assert!(
+        !stdout.contains("version=0.3.0 base_version"),
+        "a bump equal to base must not be classified superseded-below-base: {stdout}"
+    );
+    let v = receipt(&project);
+    assert_eq!(v["verdict"], "pass", "receipt: {v}");
+    assert_eq!(v["superseded"], 2, "0.2.9 (below base) and 0.3.0 (tag exists) both superseded: {v}");
+}
